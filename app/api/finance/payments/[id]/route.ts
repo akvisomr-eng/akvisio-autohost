@@ -50,13 +50,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     );
 
     if (body.status === "verified" && payment.invoice_id) {
+      await client.query("SELECT id FROM invoices WHERE id = $1 AND organization_id = $2 FOR UPDATE", [payment.invoice_id, session.organizationId]);
       const totals = await client.query(
         `SELECT i.amount,
           COALESCE(SUM(CASE WHEN p.status = 'verified' AND p.payment_type <> 'refund' THEN p.amount
                             WHEN p.status = 'verified' AND p.payment_type = 'refund' THEN -p.amount ELSE 0 END), 0) AS received
          FROM invoices i LEFT JOIN payments p ON p.invoice_id = i.id AND p.organization_id = i.organization_id
          WHERE i.id = $1 AND i.organization_id = $2
-         GROUP BY i.id, i.amount FOR UPDATE OF i`,
+         GROUP BY i.id, i.amount`,
         [payment.invoice_id, session.organizationId],
       );
       const invoice = totals.rows[0];
@@ -72,13 +73,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
 
     if (body.status === "verified" && payment.booking_id) {
+      await client.query("SELECT id FROM bookings WHERE id = $1 AND organization_id = $2 FOR UPDATE", [payment.booking_id, session.organizationId]);
       const totals = await client.query(
         `SELECT b.estimated_total,
           COALESCE(SUM(CASE WHEN p.status = 'verified' AND p.payment_type <> 'refund' THEN p.amount
                             WHEN p.status = 'verified' AND p.payment_type = 'refund' THEN -p.amount ELSE 0 END), 0) AS received
          FROM bookings b LEFT JOIN payments p ON p.booking_id = b.id AND p.organization_id = b.organization_id
          WHERE b.id = $1 AND b.organization_id = $2
-         GROUP BY b.id, b.estimated_total FOR UPDATE OF b`,
+         GROUP BY b.id, b.estimated_total`,
         [payment.booking_id, session.organizationId],
       );
       const booking = totals.rows[0];
