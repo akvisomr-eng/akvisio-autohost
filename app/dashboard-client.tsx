@@ -164,7 +164,7 @@ export default function DashboardClient() {
           <button className={tab === "customers" ? "nav-item active" : "nav-item"} onClick={() => setTab("customers")}>♙ <span>Pelanggan</span></button>
           <button className={tab === "vehicles" ? "nav-item active" : "nav-item"} onClick={() => setTab("vehicles")}>▣ <span>Armada</span></button>
           <button className={tab === "bookings" ? "nav-item active" : "nav-item"} onClick={() => setTab("bookings")}>▦ <span>Pemesanan</span></button>
-          <button className={tab === "finance" ? "nav-item active" : "nav-item"} onClick={() => setTab("finance")}>Rp <span>Keuangan</span></button>
+          {["owner", "admin", "manager", "finance"].includes(user.role) && <button className={tab === "finance" ? "nav-item active" : "nav-item"} onClick={() => setTab("finance")}>Rp <span>Keuangan</span></button>}
         </nav>
         <div className="sidebar-foot"><span className="status-dot" /> Sesi admin aktif<small>Database dibaca melalui API server</small></div>
       </aside>
