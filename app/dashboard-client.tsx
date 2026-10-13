@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import BookingWorkspace from "@/app/booking-workspace";
 
 type User = { id: string; email: string; fullName: string; role: string };
 type Customer = { id: string; full_name: string | null; whatsapp_number: string; email: string | null; preferred_locale: string; notes: string | null; created_at: string };
@@ -14,7 +15,7 @@ async function responseError(response: Response) {
 export default function DashboardClient() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "customers" | "vehicles">("overview");
+  const [tab, setTab] = useState<"overview" | "customers" | "vehicles" | "bookings">("overview");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
@@ -161,12 +162,13 @@ export default function DashboardClient() {
           <button className={tab === "overview" ? "nav-item active" : "nav-item"} onClick={() => setTab("overview")}>◫ <span>Ringkasan</span></button>
           <button className={tab === "customers" ? "nav-item active" : "nav-item"} onClick={() => setTab("customers")}>♙ <span>Pelanggan</span></button>
           <button className={tab === "vehicles" ? "nav-item active" : "nav-item"} onClick={() => setTab("vehicles")}>▣ <span>Armada</span></button>
+          <button className={tab === "bookings" ? "nav-item active" : "nav-item"} onClick={() => setTab("bookings")}>▦ <span>Pemesanan</span></button>
         </nav>
         <div className="sidebar-foot"><span className="status-dot" /> Sesi admin aktif<small>Database dibaca melalui API server</small></div>
       </aside>
       <section className="main-content">
         <header className="topbar">
-          <div><p className="eyebrow">RENTAL MANAGEMENT PLATFORM</p><h1>{tab === "overview" ? "Pusat Operasional" : tab === "customers" ? "Data Pelanggan" : "Manajemen Armada"}</h1><p className="subtitle">Kelola data Sans Rent Cars dengan akses terautentikasi.</p></div>
+          <div><p className="eyebrow">RENTAL MANAGEMENT PLATFORM</p><h1>{tab === "overview" ? "Pusat Operasional" : tab === "customers" ? "Data Pelanggan" : tab === "vehicles" ? "Manajemen Armada" : "Pemesanan dan Jadwal"}</h1><p className="subtitle">Kelola data Sans Rent Cars dengan akses terautentikasi.</p></div>
           <div className="user-actions"><div className="user-chip"><span className="profile-avatar">{user.fullName.slice(0, 1).toUpperCase()}</span><span><strong>{user.fullName}</strong><small>{user.role} · {user.email}</small></span></div><button className="secondary-button" onClick={logout}>Keluar</button></div>
         </header>
         {(error || message) && <p className={error ? "alert error" : "alert success"}>{error || message}</p>}
@@ -177,7 +179,8 @@ export default function DashboardClient() {
         </>}
         {tab === "customers" && <section className="content-grid"><article className="panel"><div className="panel-heading"><div><p className="eyebrow">CRM</p><h2>Tambah pelanggan</h2></div></div><form className="data-form" onSubmit={addCustomer}><label>Nama pelanggan<input value={customerName} onChange={(e) => setCustomerName(e.target.value)} maxLength={160} placeholder="Nama lengkap" /></label><label>Nomor WhatsApp<input value={customerWhatsapp} onChange={(e) => setCustomerWhatsapp(e.target.value)} required maxLength={20} placeholder="+6281234567890" /></label><label>Email (opsional)<input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} maxLength={254} placeholder="pelanggan@email.com" /></label><button className="primary-button" type="submit">Simpan pelanggan</button></form></article><article className="panel"><div className="panel-heading"><div><p className="eyebrow">DATABASE</p><h2>Daftar pelanggan ({customers.length})</h2></div></div>{customers.length ? <div className="table-wrap"><table><thead><tr><th>Nama</th><th>WhatsApp</th><th>Email</th></tr></thead><tbody>{customers.map((c) => <tr key={c.id}><td>{c.full_name || "—"}</td><td>{c.whatsapp_number}</td><td>{c.email || "—"}</td></tr>)}</tbody></table></div> : <p className="empty-state">Data pelanggan akan tampil di sini setelah disimpan.</p>}</article></section>}
         {tab === "vehicles" && <section className="content-grid"><article className="panel"><div className="panel-heading"><div><p className="eyebrow">FLEET</p><h2>Tambah kendaraan</h2></div></div><form className="data-form" onSubmit={addVehicle}><label>Nomor polisi<input value={vehiclePlate} onChange={(e) => setVehiclePlate(e.target.value)} required maxLength={20} placeholder="S 1234 AB" /></label><div className="field-row"><label>Merek<input value={vehicleMake} onChange={(e) => setVehicleMake(e.target.value)} required maxLength={80} placeholder="Toyota" /></label><label>Model<input value={vehicleModel} onChange={(e) => setVehicleModel(e.target.value)} required maxLength={80} placeholder="Avanza" /></label></div><div className="field-row"><label>Tahun<input type="number" min="1950" max={new Date().getFullYear() + 2} value={vehicleYear} onChange={(e) => setVehicleYear(e.target.value)} placeholder="2024" /></label><label>Tarif harian (Rp)<input type="number" min="0" step="1000" value={vehicleRate} onChange={(e) => setVehicleRate(e.target.value)} required /></label></div><label>Jenis layanan<select value={vehicleMode} onChange={(e) => setVehicleMode(e.target.value)}><option value="both">Lepas kunci dan dengan sopir</option><option value="self_drive">Lepas kunci</option><option value="chauffeur">Dengan sopir</option></select></label><button className="primary-button" type="submit">Simpan kendaraan</button></form></article><article className="panel"><div className="panel-heading"><div><p className="eyebrow">DATABASE</p><h2>Daftar armada ({vehicles.length})</h2></div></div>{vehicles.length ? <div className="table-wrap"><table><thead><tr><th>Kendaraan</th><th>Nomor polisi</th><th>Tarif/hari</th><th>Status</th></tr></thead><tbody>{vehicles.map((v) => <tr key={v.id}><td>{v.make} {v.model}{v.model_year ? <small className="cell-note">{v.model_year}</small> : null}</td><td>{v.registration_number}</td><td>{Number(v.daily_rate).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}</td><td><span className="status-pill">{v.status === "available" ? "Tersedia" : v.status === "maintenance" ? "Perawatan" : "Nonaktif"}</span></td></tr>)}</tbody></table></div> : <p className="empty-state">Data kendaraan akan tampil di sini setelah disimpan.</p>}</article></section>}
-        <footer>Sans Rent Cars CRM · Modul admin dasar · WhatsApp dan AI belum diaktifkan</footer>
+        {tab === "bookings" && <BookingWorkspace />}
+        <footer>Sans Rent Cars CRM · CRM, armada, dan pemesanan · WhatsApp dan AI belum diaktifkan</footer>
       </section>
       <style>{styles}</style>
     </main>
