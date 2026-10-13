@@ -24,6 +24,29 @@ const planSchema = z.object({
 export async function GET() {
   const session = await getPlatformSession();
   if (!session) return NextResponse.json({ error: "Autentikasi Super Admin diperlukan." }, { status: 401 });
+  try {
+    const result = await getPool().query(
+      `SELECT id, code, name, description, activation_fee, monthly_fee, commission_rate_bps,
+              commission_cap_amount, max_vehicles, max_users, monthly_conversation_limit,
+              included_ai_tokens, is_active, created_at, updated_at
+       FROM subscription_plans ORDER BY created_at DESC LIMIT 200`,
+    );
+    return NextResponse.json({ data: result.rows });
+  } catch (error) {
+    console.error("Platform plans list failed", error instanceof Error ? error.message : "unknown error");
+    return NextResponse.json({ error: "Paket belum dapat dimuat. Pastikan migrasi platform billing telah diterapkan pada database yang digunakan." }, { status: 503 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const session = await getPlatformSession();
+  if (!session) return NextResponse.json({ error: "Autentikasi Super Admin diperlukan." }, { status: 401 });
+  let raw: unknown;
+  try { raw = await request.json(); }
+  catch { return NextResponse.json({ error: "Format permintaan tidak valid." }, { status: 400 }); }
+  const parsed = planSchema.safeParse(raw);
+  if (!parsed.success) return NextResponse.json({ error: "Data paket tidak valid.", details: parsed.error.flatten().fieldErrors }, { status: 400 });
+  const p = parsed.data;
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
