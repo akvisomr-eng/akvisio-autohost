@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { isCalendarDate, toMinorUnits } from "@/lib/finance-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
 
   let dueAt: string | null = null;
   if (body.dueAt) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.dueAt) || !Number.isFinite(Date.parse(`${body.dueAt}T00:00:00Z`))) {
+    if (!isCalendarDate(body.dueAt)) {
       return NextResponse.json({ error: "Tanggal jatuh tempo harus berformat YYYY-MM-DD." }, { status: 400 });
     }
     dueAt = body.dueAt;
@@ -103,12 +104,13 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    const amount = Number(booking.estimated_total);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const amountMinor = toMinorUnits(booking.estimated_total);
+    if (amountMinor === null || amountMinor <= 0) {
       await client.query("ROLLBACK");
       return NextResponse.json({ error: "Total pemesanan harus lebih dari Rp0 sebelum invoice diterbitkan." }, { status: 400 });
     }
 
+    const amount = (amountMinor ?? 0) / 100;
     const invoiceNumber = `SRC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
     const inserted = await client.query(
       `INSERT INTO invoices (organization_id, booking_id, invoice_number, amount, status, due_at, issued_at)
