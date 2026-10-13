@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm install --no-audit --no-fund
       - name: Type check
         run: npm run typecheck
       - name: Lint
