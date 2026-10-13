@@ -1,3 +1,5 @@
+import { isSafeAiHostBaseUrl } from "@/lib/ai-host";
+
 export type HealthComponentStatus = "ok" | "not_configured" | "disabled" | "error";
 
 export type HealthChecks = {
@@ -32,7 +34,7 @@ export function buildHealthChecks(env: Record<string, string | undefined>, datab
 
   let aiDraft: HealthComponentStatus = "disabled";
   if (env.AI_HOST_ENABLED === "true") {
-    aiDraft = env.AI_HOST_API_KEY && env.AI_HOST_MODEL && /^https:\/\//i.test(env.AI_HOST_BASE_URL || "")
+    aiDraft = env.AI_HOST_API_KEY && env.AI_HOST_MODEL && isSafeAiHostBaseUrl(env.AI_HOST_BASE_URL)
       ? "ok" : "not_configured";
   }
 
