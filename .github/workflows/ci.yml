@@ -38,6 +38,8 @@ jobs:
         run: npm run test:whatsapp-policy
       - name: WhatsApp delivery status ordering tests
         run: npm run test:whatsapp-delivery-status
+      - name: WhatsApp processor attempt accounting tests
+        run: npm run test:whatsapp-processor-attempts
       - name: Finance validation tests
         run: npm run test:finance-validation
       - name: AI Host prompt safety tests
