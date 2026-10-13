@@ -33,6 +33,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Periode komisi harus berupa satu bulan kalender penuh." }, { status: 400 });
   }
   const { periodStart, periodEnd, organizationId } = parsed.data;
+  const now = new Date();
+  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  if (new Date(periodEnd + "T00:00:00.000Z").getTime() >= currentMonthStart.getTime()) {
+    return NextResponse.json({ error: "Settlement hanya boleh dijalankan untuk bulan kalender yang sudah selesai." }, { status: 400 });
+  }
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -41,7 +46,7 @@ export async function POST(request: NextRequest) {
        WHERE status IN ('active','past_due') AND commission_rate_bps > 0
          AND ($1::uuid IS NULL OR organization_id = $1)
        ORDER BY organization_id
-       LIMIT 200 FOR UPDATE SKIP LOCKED`,
+       FOR UPDATE SKIP LOCKED`,
       [organizationId || null],
     );
     let createdCount = 0;
