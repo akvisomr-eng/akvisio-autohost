@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { calculateSubscriptionInvoice } from "@/lib/platform-billing";
 
 type Plan = {
   id: string; code: string; name: string; description: string; activation_fee: string | number;
@@ -165,12 +166,12 @@ export default function PlatformConsole({ fullName, email }: { fullName: string;
           <div className="panel-heading"><div><p className="eyebrow">TENANT ONBOARDING</p><h2>Tetapkan paket ke tenant</h2></div></div>
           <form className="plan-form" onSubmit={(event) => void assignPlan(event)}>
             <label>Tenant belum memiliki subscription<select value={selectedTenant} onChange={(event) => setSelectedTenant(event.target.value)} required><option value="">Pilih tenant</option>{unassigned.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name} · {tenant.slug}</option>)}</select></label>
-            <label>Paket aktif<select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)} required><option value="">Pilih paket</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · {idr(plan.monthly_fee)}/bulan</option>)}</select></label>
+            <label>Paket aktif<select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)} required><option value="">Pilih paket</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · {idr(plan.monthly_fee)}/bulan · aktivasi {idr(plan.activation_fee)}{billingCycle === "yearly" ? " · tahunan setelah diskon " + idr(calculateSubscriptionInvoice(Number(plan.monthly_fee), "yearly")?.totalBeforeTax ?? 0) : ""}</option>)}</select></label>
             <label>Periode langganan<select value={billingCycle} onChange={(event) => setBillingCycle(event.target.value as "monthly" | "yearly")}><option value="monthly">Bulanan</option><option value="yearly">Tahunan (diskon langganan 10%)</option></select></label>
             <p className="notice">Penetapan paket membuat subscription berstatus menunggu aktivasi. Ini belum menerbitkan invoice, memverifikasi pembayaran, atau mengaktifkan layanan.</p>
             <button className="primary" type="submit" disabled={busy || !selectedTenant || !selectedPlan}>{busy ? "Memproses…" : "Tetapkan paket"}</button>
           </form>
-          <div className="plan-list"><h3>Paket yang terdaftar ({plans.length})</h3>{plans.length ? plans.map((plan) => <div className="plan-row" key={plan.id}><div><strong>{plan.name}</strong><small>{plan.code} · {plan.commission_rate_bps / 100}% komisi · {plan.is_active ? "Aktif" : "Nonaktif"}</small></div><div className="plan-price"><strong>{idr(plan.monthly_fee)}</strong><small>per bulan</small></div></div>) : <p className="empty">{loading ? "Memuat paket…" : "Belum ada paket. Buat paket pertama setelah kebijakan harga disetujui."}</p>}</div>
+          <div className="plan-list"><h3>Paket yang terdaftar ({plans.length})</h3>{plans.length ? plans.map((plan) => <div className="plan-row" key={plan.id}><div><strong>{plan.name}</strong><small>{plan.code} · {plan.commission_rate_bps / 100}% komisi · aktivasi {idr(plan.activation_fee)} · {plan.is_active ? "Aktif" : "Nonaktif"}</small></div><div className="plan-price"><strong>{idr(plan.monthly_fee)}</strong><small>per bulan · {idr(calculateSubscriptionInvoice(Number(plan.monthly_fee), "yearly")?.totalBeforeTax ?? 0)} per tahun setelah diskon</small></div></div>) : <p className="empty">{loading ? "Memuat paket…" : "Belum ada paket. Buat paket pertama setelah kebijakan harga disetujui."}</p>}</div>
         </article>
       </section>
       <section className="panel tenants-panel"><div className="panel-heading"><div><p className="eyebrow">TENANT DIRECTORY</p><h2>Daftar tenant ({tenants.length})</h2></div></div>
