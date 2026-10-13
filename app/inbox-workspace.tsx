@@ -91,7 +91,10 @@ export default function InboxWorkspace() {
         body: JSON.stringify({ text: replyText.trim(), requestId }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Balasan WhatsApp gagal dikirim.");
+      if (!response.ok) {
+        setReplyRequestId("");
+        throw new Error(result.error || "Balasan WhatsApp gagal dikirim.");
+      }
       setMessage(result.message || "Permintaan balasan diproses.");
       setReplyText("");
       setReplyRequestId("");
