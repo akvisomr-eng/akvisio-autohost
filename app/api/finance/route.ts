@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { isCalendarDate, toMinorUnits } from "@/lib/finance-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,11 +86,12 @@ export async function POST(request: NextRequest) {
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: "Format permintaan tidak valid." }, { status: 400 }); }
 
-  const amount = Number(body.amount);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000_000) {
+  const amountMinor = toMinorUnits(body.amount);
+  if (amountMinor === null || amountMinor <= 0 || amountMinor > 100_000_000_000_000) {
     return NextResponse.json({ error: "Nominal harus lebih dari Rp0 dan tidak melebihi Rp1 triliun." }, { status: 400 });
   }
 
+  const amount = (amountMinor ?? 0) / 100;
   let bookingId = body.bookingId?.trim() || null;
   const invoiceId = body.invoiceId?.trim() || null;
   const vehicleId = body.vehicleId?.trim() || null;
