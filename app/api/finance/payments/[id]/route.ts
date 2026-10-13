@@ -40,6 +40,34 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ error: "Hanya pembayaran berstatus pending yang dapat diputuskan. Status sebelumnya tidak dapat ditimpa." }, { status: 409 });
     }
 
+    if (body.status === "verified" && payment.invoice_id) {
+      // Serialize verification per invoice so concurrent pending payments cannot over-collect.
+      const invoiceResult = await client.query(
+        "SELECT id, amount, status FROM invoices WHERE id = $1 AND organization_id = $2 FOR UPDATE",
+        [payment.invoice_id, session.organizationId],
+      );
+      const invoice = invoiceResult.rows[0];
+      if (!invoice || invoice.status === "void") {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "Invoice tidak ditemukan atau sudah dibatalkan." }, { status: 409 });
+      }
+      if (payment.payment_type !== "refund") {
+        const receivedResult = await client.query(
+          `SELECT COALESCE(SUM(CASE WHEN status = 'verified' AND payment_type <> 'refund' THEN amount
+                                    WHEN status = 'verified' AND payment_type = 'refund' THEN -amount ELSE 0 END), 0) AS received
+           FROM payments WHERE invoice_id = $1 AND organization_id = $2`,
+          [payment.invoice_id, session.organizationId],
+        );
+        const received = Number(receivedResult.rows[0]?.received || 0);
+        if (received + Number(payment.amount) > Number(invoice.amount)) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({
+            error: "Nominal ini melebihi sisa tagihan invoice. Periksa pembayaran terverifikasi dan jumlah yang diterima sebelum melanjutkan.",
+          }, { status: 409 });
+        }
+      }
+    }
+
     const updated = await client.query(
       `UPDATE payments SET status = $1,
          verified_by = CASE WHEN $1 = 'verified' THEN $2 ELSE NULL END,
