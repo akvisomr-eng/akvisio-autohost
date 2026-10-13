@@ -7,12 +7,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const financeRoles = ["owner", "admin", "manager", "finance"];
-const staffRoles = [...financeRoles, "staff"];
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Autentikasi diperlukan." }, { status: 401 });
+  if (!financeRoles.includes(session.role)) return NextResponse.json({ error: "Akses data keuangan hanya untuk bagian keuangan atau manajemen." }, { status: 403 });
   const from = request.nextUrl.searchParams.get("from");
   const to = request.nextUrl.searchParams.get("to");
   if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Autentikasi diperlukan." }, { status: 401 });
-  if (!staffRoles.includes(session.role)) return NextResponse.json({ error: "Akses pencatatan keuangan tidak diizinkan." }, { status: 403 });
+  if (!financeRoles.includes(session.role)) return NextResponse.json({ error: "Pencatatan keuangan hanya untuk bagian keuangan atau manajemen." }, { status: 403 });
 
   let body: {
     kind?: string; bookingId?: string; invoiceId?: string; vehicleId?: string;
