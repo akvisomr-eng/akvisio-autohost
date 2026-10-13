@@ -24,12 +24,12 @@ const deny = (code: string, reason: string): WhatsAppOutboundPolicyResult => ({
   reason,
 });
 
-const digitsOnly = (value: string): string => value.replace(/\\D/g, "");
+const digitsOnly = (value: string): string => value.replace(/\D/g, "");
 
-const isE164 = (value: string): boolean => /^\\+[1-9]\\d{7,14}$/.test(value);
+const isE164 = (value: string): boolean => /^\+[1-9]\d{7,14}$/.test(value);
 
 const parseTimestamp = (value?: string): number => {
-  if (!value || !/(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)) return NaN;
+  if (!value || !/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return NaN;
   return Date.parse(value);
 };
 
