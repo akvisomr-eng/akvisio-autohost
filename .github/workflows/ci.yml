@@ -42,6 +42,8 @@ jobs:
         run: npm run test:finance-validation
       - name: AI Host prompt safety tests
         run: npm run test:ai-host
+      - name: Health readiness tests
+        run: npm run test:health-checks
       - name: PostgreSQL tenant integrity integration tests
         run: npm run test:tenant-integrity
         env:
