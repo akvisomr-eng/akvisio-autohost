@@ -35,10 +35,6 @@ before(async () => {
   // Build a disposable schema from the baseline plus tenant-integrity migrations.
   for (const file of [
     "001_initial_schema.sql",
-    "002_booking_safety_ai_foundations.sql",
-    "003_admin_auth.sql",
-    "004_booking_tenant_integrity.sql",
-    "005_finance_tenant_integrity.sql",
     "006_whatsapp_inbox_tenant_routing.sql",
     "007_whatsapp_outbound_idempotency.sql",
     "008_tenant_finance_integrity.sql",
