@@ -14,10 +14,10 @@ export async function GET() {
       await pool.query("SELECT 1");
       database = "ok";
       const requiredTables = [
-        "organizations", "users", "customers", "vehicles", "bookings", "conversations", "messages",
+        "organizations", "users", "customers", "vehicles", "vehicle_maintenance", "bookings", "conversations", "messages",
         "knowledge_documents", "ai_runs", "follow_ups", "invoices", "payments", "expenses", "audit_logs",
         "webhook_events", "platform_admins", "subscription_plans", "tenant_subscriptions",
-        "platform_invoices", "platform_payments", "commission_entries", "tenant_usage_monthly", "platform_audit_logs",
+        "platform_invoices", "platform_payments", "commission_entries", "tenant_usage_monthly", "platform_audit_logs", "addon_catalog", "organization_addons",
       ];
       const schemaResult = await pool.query<{ missing_tables: string[] | null; missing_columns: string[] | null }>(
         `WITH required_tables(name) AS (
