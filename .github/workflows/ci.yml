@@ -1,4 +1,4 @@
-name: Sans Rent Cars CI
+name: AKVISIO Autohost CI
 
 on:
   push:
@@ -38,6 +38,8 @@ jobs:
         run: npm run test:whatsapp-policy
       - name: Finance validation tests
         run: npm run test:finance-validation
+      - name: AI Host prompt safety tests
+        run: npm run test:ai-host
       - name: PostgreSQL tenant integrity integration tests
         run: npm run test:tenant-integrity
         env:
