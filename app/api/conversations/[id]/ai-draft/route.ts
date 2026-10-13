@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { buildAiHostMessages, estimateAiHostCost, isAiHostRateLimited, isSafeAiHostBaseUrl, readAiHostProviderResponse } from "@/lib/ai-host";
+import { buildAiHostMessages, estimateAiHostCost, getAiHostDraftBlockReason, isAiHostRateLimited, isSafeAiHostBaseUrl, readAiHostProviderResponse } from "@/lib/ai-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +41,11 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     );
     const conversation = conversationResult.rows[0];
     if (!conversation) return NextResponse.json({ error: "Percakapan tidak ditemukan." }, { status: 404 });
-    if (conversation.status === "resolved" || conversation.status === "archived") {
+    const draftBlockReason = getAiHostDraftBlockReason(conversation.status);
+    if (draftBlockReason === "human_handoff") {
+      return NextResponse.json({ error: "Percakapan sedang ditangani staf manusia. Draf AI diblokir sampai staf membuka kembali penanganan AI." }, { status: 409 });
+    }
+    if (draftBlockReason === "conversation_closed") {
       return NextResponse.json({ error: "Percakapan sudah ditutup. Buka kembali sebelum membuat draf." }, { status: 409 });
     }
 
