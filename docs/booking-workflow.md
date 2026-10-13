@@ -35,3 +35,7 @@ Migrasi `004_booking_tenant_integrity.sql` menambahkan foreign key komposit sehi
 - Penandatanganan kontrak dan serah-terima kendaraan.
 - Integrasi WhatsApp Cloud API.
 - Pengujian dengan data operasional riil dan deployment publik.
+
+## Idempotensi dan percobaan ulang
+
+Permintaan pembuatan booking mengunci kunci idempotensi per organisasi menggunakan advisory lock PostgreSQL. Jika server telah menyimpan booking tetapi respons jaringan hilang, klien harus mengulang permintaan dengan kunci yang sama agar booking yang sama dikembalikan dan tidak dibuat ulang.
