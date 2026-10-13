@@ -36,6 +36,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ error: "ID permintaan tidak valid. Muat ulang halaman lalu coba lagi." }, { status: 400 });
   }
 
+  // Outbound messaging is opt-in. Keep disabled until a paid activation or explicitly
+  // approved, time-boxed trial has been configured and the target test number is verified.
+  if (process.env.WHATSAPP_OUTBOUND_ENABLED !== "true") {
+    return NextResponse.json({
+      error: "Pengiriman WhatsApp dinonaktifkan. Aktifkan hanya untuk nomor uji yang disetujui dalam trial atau setelah aktivasi layanan.",
+      code: "WHATSAPP_OUTBOUND_DISABLED",
+    }, { status: 503 });
+  }
+
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const graphVersion = process.env.WHATSAPP_GRAPH_API_VERSION || "";
   if (!accessToken || !/^v\d+\.\d+$/.test(graphVersion)) {
