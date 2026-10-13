@@ -82,8 +82,11 @@ export async function POST(request: NextRequest) {
   }
   if (notes && notes.length > 2000) return NextResponse.json({ error: "Catatan maksimal 2.000 karakter." }, { status: 400 });
 
+  let client: Awaited<ReturnType<ReturnType<typeof getPool>["connect"]>> | undefined;
   try {
-    const result = await getPool().query(
+    client = await getPool().connect();
+    await client.query("BEGIN");
+    const result = await client.query(
       `INSERT INTO vehicles
        (organization_id, registration_number, make, model, model_year, transmission, seats, service_mode, daily_rate, overtime_rate, odometer_km, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -92,15 +95,20 @@ export async function POST(request: NextRequest) {
       [session.organizationId, registrationNumber, make, model, modelYear, transmission, seats, serviceMode, dailyRate, overtimeRate, odometerKm, notes],
     );
     if (!result.rows[0]) {
+      await client.query("ROLLBACK");
       return NextResponse.json({ error: "Nomor polisi sudah terdaftar pada organisasi ini." }, { status: 409 });
     }
-    await getPool().query(
+    await client.query(
       "INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id) VALUES ($1, $2, 'user', 'vehicle.created', 'vehicle', $3)",
       [session.organizationId, session.userId, result.rows[0].id],
     );
+    await client.query("COMMIT");
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => undefined);
     console.error("Vehicle create failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: "Kendaraan gagal disimpan." }, { status: 503 });
+  } finally {
+    client?.release();
   }
 }
