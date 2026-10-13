@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test:whatsapp-policy": "node --experimental-strip-types --test tests/whatsapp-outbound-policy.test.mjs",
     "test:finance-validation": "node --experimental-strip-types --test tests/finance-validation.test.mjs",
-    "test": "npm run test:whatsapp-policy && npm run test:finance-validation"
+    "test": "npm run test:whatsapp-policy && npm run test:finance-validation",
+    "test:tenant-integrity": "node --experimental-strip-types --test tests/tenant-integrity.integration.test.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
