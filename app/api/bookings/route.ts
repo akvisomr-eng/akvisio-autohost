@@ -105,6 +105,8 @@ export async function POST(request: NextRequest) {
   try {
     client = await getPool().connect();
     await client.query("BEGIN");
+    // Serialize retries that use the same organization-scoped idempotency key.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [session.organizationId, idempotencyKey]);
 
     const existing = await client.query(
       `SELECT id, booking_code, status, estimated_total, pickup_at, return_at
