@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { buildAiHostMessages, estimateAiHostCost, isAiHostRateLimited, readAiHostProviderResponse } from "@/lib/ai-host";
+import { buildAiHostMessages, estimateAiHostCost, isAiHostRateLimited, isSafeAiHostBaseUrl, readAiHostProviderResponse } from "@/lib/ai-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const apiKey = process.env.AI_HOST_API_KEY;
   const baseUrl = process.env.AI_HOST_BASE_URL?.replace(/\/+$/, "");
   const model = process.env.AI_HOST_MODEL;
-  if (!apiKey || !baseUrl || !model || !/^https:\/\//i.test(baseUrl)) {
+  if (!apiKey || !baseUrl || !model || !isSafeAiHostBaseUrl(baseUrl)) {
     return NextResponse.json({ error: "Konfigurasi provider AI Host belum lengkap atau tidak aman." }, { status: 503 });
   }
 
