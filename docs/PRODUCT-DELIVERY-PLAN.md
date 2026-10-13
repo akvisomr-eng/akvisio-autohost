@@ -11,14 +11,14 @@ Deliver a multi-tenant SaaS whose primary value is a reliable AI Host that handl
 - CI covers lint, typecheck, build, policy tests, finance validation, and PostgreSQL tenant isolation tests.
 - Production database remains untouched during development.
 
-### Gate 2 — AI Host core (not yet live)
-- Add a provider adapter with strict timeouts, output limits, usage/cost tracking, and fail-closed behavior.
-- Retrieve only tenant-scoped, approved knowledge documents.
+### Gate 2 — AI Host core (manual draft available; automatic replies not live)
+- [x] Provider adapter for staff-requested drafts with strict timeout, bounded response size, optional usage/cost tracking, and fail-closed behavior.
+- [x] Retrieve tenant-scoped knowledge documents for manual drafts; continue verifying approval lifecycle and retrieval quality before automatic use.
 - Use a small allowlist of typed business tools. Never permit model-generated SQL.
 - Require grounded evidence for rates, availability, policies, and booking status. If no verified answer exists, ask a clarification or hand off to a person.
 - Persist inbound, AI decision, tool invocation, usage, and outbound attempt as auditable events.
 - Deduplicate by provider message ID and ensure retries cannot send duplicate answers.
-- Keep automated replies disabled until a separate, explicitly approved test configuration is verified.
+- [x] Keep automated replies disabled until a separate, explicitly approved test configuration is verified.
 
 ### Gate 3 — Booking workflow
 - Gather dates/times, rental duration, service mode, vehicle class, pickup/return locations, and relevant customer details.
@@ -33,9 +33,9 @@ Deliver a multi-tenant SaaS whose primary value is a reliable AI Host that handl
 - Expose retry-safe processing, dead-letter/error visibility, latency, token/usage cost, and audit history.
 - Enforce per-tenant usage limits and rate limits.
 
-### Gate 5 — SaaS billing and Super Admin
+### Gate 5 — SaaS billing and Super Admin (core implementation present; production validation pending)
 - Separate platform subscription billing from each tenant's rental invoices.
-- Support plan definitions, activation fee, recurring subscription invoices, transaction commission rules, grace periods, suspension/reactivation, and tenant feature/usage limits.
+- [x] Core implementation: plan catalogue, activation fee, subscription invoices, annual 10% discount, payment verification workflow, commission settlement, subscription activation/suspension/reactivation/cancellation, and audit. [ ] Finalize and test grace-period enforcement and tenant usage limits before commercial rollout.
 - Commission calculation uses only eligible verified rental receipts; exclude cancelled/refunded amounts and refundable deposits according to the signed plan.
 - Platform payment status changes only through a verified payment provider callback or an authorized finance/admin workflow.
 - Super Admin endpoints require a distinct platform-level authorization model; tenant owner/admin roles must not grant platform-wide access.
@@ -53,3 +53,14 @@ Deliver a multi-tenant SaaS whose primary value is a reliable AI Host that handl
 - Never use Sans Rent Cars' live number `+6281586878487` for integration or trial without a separate explicit authorization.
 - Never commit API keys, access tokens, session secrets, or customer personal data.
 - If a provider credential or external approval is missing, implement and test the safe code path without pretending the external integration is live.
+
+
+## Current commercial catalogue (development)
+
+- Starter: Rp475.000/month
+- Business: Rp895.000/month
+- Pro: Rp1.595.000/month
+- Activation: Rp3.500.000 once per tenant
+- Annual subscription discount: 10% of 12 months' subscription fees; activation fee is not discounted.
+
+These values were observed in the development catalogue. They are not proof that production billing has been migrated or enabled.
