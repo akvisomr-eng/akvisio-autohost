@@ -121,3 +121,11 @@ export function isAiHostRateLimited(recentRuns: number, maxRuns = 20): boolean {
 }
 
 export { isSafeAiHostBaseUrl } from "./ai-host-url.mjs";
+
+
+/** AI drafts must not run while a conversation is handed off to a human. */
+export function getAiHostDraftBlockReason(status: string): "human_handoff" | "conversation_closed" | undefined {
+  if (status === "pending_human") return "human_handoff";
+  if (status === "resolved" || status === "archived") return "conversation_closed";
+  return undefined;
+}

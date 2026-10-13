@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAiHostMessages, parseAiHostResponse, readAiHostProviderResponse, estimateAiHostCost, isAiHostRateLimited, isSafeAiHostBaseUrl, MAX_AI_PROVIDER_RESPONSE_BYTES } from "../lib/ai-host.ts";
+import { buildAiHostMessages, getAiHostDraftBlockReason, parseAiHostResponse, readAiHostProviderResponse, estimateAiHostCost, isAiHostRateLimited, isSafeAiHostBaseUrl, MAX_AI_PROVIDER_RESPONSE_BYTES } from "../lib/ai-host.ts";
 
 test("AI prompt explicitly treats knowledge and messages as untrusted data", () => {
   const messages = buildAiHostMessages({
@@ -74,4 +74,12 @@ test("AI provider URL validator accepts HTTPS public endpoints only", () => {
   assert.equal(isSafeAiHostBaseUrl("https://user:pass@api.example.com/v1"), false);
   assert.equal(isSafeAiHostBaseUrl("https://api.example.com/v1?token=x"), false);
   assert.equal(isSafeAiHostBaseUrl("not a URL"), false);
+});
+
+
+test("AI drafts are blocked during human handoff and after closure", () => {
+  assert.equal(getAiHostDraftBlockReason("pending_human"), "human_handoff");
+  assert.equal(getAiHostDraftBlockReason("resolved"), "conversation_closed");
+  assert.equal(getAiHostDraftBlockReason("archived"), "conversation_closed");
+  assert.equal(getAiHostDraftBlockReason("open"), undefined);
 });
