@@ -5,7 +5,7 @@
 
 ## Verified in repository and database
 
-- Main branch CI passed after annual subscription billing was merged.
+- Main branch CI passed after annual subscription billing and subsequent platform/AI safety changes were merged; always verify CI for the exact deployment SHA.
 - Migrations 001–013 were applied sequentially and verified on a separate Neon rehearsal branch created from the production branch.
 - Migrations 009–013 were applied to the Neon development branch. A metadata-only check confirmed all required core and platform tables exist there.
 - The development subscription catalogue contains the current approved prices:

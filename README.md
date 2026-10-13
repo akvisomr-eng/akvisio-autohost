@@ -6,7 +6,7 @@
 
 Repositori ini masih dalam pengembangan. Fondasi yang tersedia meliputi autentikasi/session, data pelanggan dan armada, booking, inbox percakapan WhatsApp, ingestion webhook, balasan manual staf, serta API keuangan dasar dengan pembatasan tenant dan audit.
 
-**AI Host belum boleh dianggap aktif/live.** Pipeline webhook saat ini menyimpan event dan pesan; balasan AI otomatis belum diaktifkan. Fitur paket langganan SaaS, tagihan aktivasi, penagihan berulang, komisi transaksi, dan Super Admin masih dalam pengerjaan. Integrasi WhatsApp outbound tetap fail-closed sampai konfigurasi, persetujuan, dan uji resmi tersedia.
+**Aplikasi belum boleh dianggap production/live.** Fondasi paket langganan, harga katalog, aktivasi, invoice platform, verifikasi pembayaran, siklus subscription, komisi, serta kontrol Super Admin telah tersedia di kode. AI Host mendukung pembuatan draf secara manual oleh staf, dengan batas respons provider dan pencatatan estimasi biaya opsional; fitur ini tetap nonaktif secara default. Pemrosesan webhook menyimpan pesan masuk ke inbox, tetapi balasan AI otomatis dan WhatsApp outbound tetap nonaktif sampai konfigurasi, persetujuan, dan uji end-to-end resmi tersedia. Database development telah dimigrasikan dan diverifikasi; database production belum dimigrasikan.
 
 ## Arah produk
 
@@ -47,3 +47,11 @@ Repositori ini masih dalam pengembangan. Fondasi yang tersedia meliputi autentik
 - AI hanya boleh menggunakan tool yang di-allowlist; model tidak boleh membuat SQL arbitrer atau mengubah status finansial secara langsung.
 - Handoff manusia, deduplikasi pesan, idempotensi, audit, batas biaya/pemakaian, dan penanganan kegagalan merupakan persyaratan produk.
 - Outbound WhatsApp harus tetap mati bila credential, nomor resmi, jendela pesan, allowlist uji, atau feature flag tidak memenuhi aturan.
+
+
+## Status deployment
+
+- CI main harus lulus pada commit yang tepat sebelum deploy.
+- Hosting production dan domain khusus belum terverifikasi tersedia. Domain khusus tidak selalu wajib untuk pilot jika hosting menyediakan URL HTTPS stabil, tetapi endpoint publik HTTPS wajib untuk webhook WhatsApp.
+- Belum ada bukti uji langsung pada nomor WhatsApp bisnis nyata. Jangan mengiklankan balasan AI otomatis sebagai aktif sebelum seluruh release gate pada `docs/PRODUCTION-READINESS-CHECKLIST.md` terpenuhi.
+- Tidak ada migrasi production, pembelian domain/hosting, atau aktivasi pengiriman WhatsApp yang dilakukan secara otomatis oleh proses pengembangan ini.
