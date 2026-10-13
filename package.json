@@ -11,8 +11,9 @@
     "test:whatsapp-policy": "node --experimental-strip-types --test tests/whatsapp-outbound-policy.test.mjs",
     "test:finance-validation": "node --experimental-strip-types --test tests/finance-validation.test.mjs",
     "test:ai-host": "node --experimental-strip-types --test tests/ai-host.test.mjs",
-    "test": "npm run test:whatsapp-policy && npm run test:finance-validation && npm run test:ai-host",
-    "test:tenant-integrity": "node --experimental-strip-types --test tests/tenant-integrity.integration.test.mjs"
+    "test": "npm run test:whatsapp-policy && npm run test:finance-validation && npm run test:ai-host && npm run test:health-checks",
+    "test:tenant-integrity": "node --experimental-strip-types --test tests/tenant-integrity.integration.test.mjs",
+    "test:health-checks": "node --experimental-strip-types --test tests/health-checks.test.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
