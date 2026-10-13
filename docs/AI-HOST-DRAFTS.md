@@ -32,3 +32,11 @@ Requires an authenticated tenant staff role and the latest conversation message 
 - Optional `AI_HOST_INPUT_USD_PER_1K_TOKENS` and `AI_HOST_OUTPUT_USD_PER_1K_TOKENS` values define explicit per-1,000-token rates in USD. When both rates and token counts are present and valid, `ai_runs.estimated_cost` stores an estimate in USD and the audit event includes that estimate. If either rate is absent or invalid, estimated cost remains null rather than inventing a rate.
 - These estimates are operational approximations, not provider invoices. Reconcile against the provider's actual usage/billing dashboard.
 - `AI_HOST_ENABLED` remains `false` by default. This improvement does not enable automatic replies or WhatsApp outbound sending.
+
+
+## Quota reservation and cost configuration
+
+- AI draft quota is 20 requests per tenant in a rolling 10-minute window.
+- The quota check and creation of the `ai_runs` reservation execute in one PostgreSQL transaction under a tenant-scoped advisory lock, preventing concurrent requests from bypassing the ceiling.
+- Invalid quota counters fail closed.
+- Optional `AI_HOST_INPUT_USD_PER_1K_TOKENS` and `AI_HOST_OUTPUT_USD_PER_1K_TOKENS` are provider-specific USD rates per 1,000 tokens. Keep them blank until verified against the selected provider's pricing.
