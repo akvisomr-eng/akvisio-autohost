@@ -116,7 +116,7 @@ export default function PlatformConsole({ fullName, email }: { fullName: string;
     } finally { setBusy(false); }
   }
 
-  const unassigned = tenants.filter((tenant) => !tenant.subscription_id);
+  const unassigned = tenants.filter((tenant) => !["pending_activation", "trialing", "active", "past_due", "suspended"].includes(tenant.subscription_status || ""));
   const activePlans = plans.filter((plan) => plan.is_active);
 
   return (
