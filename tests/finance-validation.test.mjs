@@ -25,3 +25,14 @@ test("rejects invalid or ambiguous monetary inputs", () => {
     assert.equal(toMinorUnits(value), null, String(value));
   }
 });
+
+test("supports exact boundary checks with integer minor units", () => {
+  const received = toMinorUnits("99.90");
+  const incoming = toMinorUnits("0.10");
+  const invoice = toMinorUnits("100.00");
+  assert.notEqual(received, null);
+  assert.notEqual(incoming, null);
+  assert.notEqual(invoice, null);
+  assert.equal(received + incoming, invoice);
+  assert.equal(received + incoming + 1 > invoice, true);
+});
