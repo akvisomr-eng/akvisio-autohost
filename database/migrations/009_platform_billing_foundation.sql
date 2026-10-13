@@ -112,6 +112,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_payments_provider_reference
 CREATE INDEX IF NOT EXISTS idx_platform_payments_org_status
   ON platform_payments (organization_id, status, received_at DESC);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_org_id_pair ON payments (organization_id, id);
+
 CREATE TABLE IF NOT EXISTS commission_entries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
@@ -139,6 +141,39 @@ CREATE TABLE IF NOT EXISTS commission_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_commission_entries_org_status_date
   ON commission_entries (organization_id, status, earned_at);
+
+
+CREATE OR REPLACE FUNCTION validate_commission_source_payment() RETURNS trigger
+LANGUAGE plpgsql AS $
+DECLARE
+  source_payment payments%ROWTYPE;
+BEGIN
+  SELECT * INTO source_payment
+  FROM payments
+  WHERE organization_id = NEW.organization_id AND id = NEW.source_payment_id
+  FOR SHARE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Commission source payment not found for tenant' USING ERRCODE = '23503';
+  END IF;
+  IF source_payment.status <> 'verified' THEN
+    RAISE EXCEPTION 'Commission can only be recorded from verified receipts' USING ERRCODE = '23514';
+  END IF;
+  IF source_payment.payment_type NOT IN ('rental','extra_charge')
+     OR source_payment.payment_type <> NEW.source_payment_type THEN
+    RAISE EXCEPTION 'Deposits and refunds are not commissionable' USING ERRCODE = '23514';
+  END IF;
+  IF NEW.source_booking_id IS NOT NULL AND source_payment.booking_id IS DISTINCT FROM NEW.source_booking_id THEN
+    RAISE EXCEPTION 'Commission booking does not match source payment' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $;
+
+DROP TRIGGER IF EXISTS trg_validate_commission_source_payment ON commission_entries;
+CREATE TRIGGER trg_validate_commission_source_payment
+BEFORE INSERT OR UPDATE OF organization_id, source_payment_id, source_booking_id, source_payment_type
+ON commission_entries
+FOR EACH ROW EXECUTE FUNCTION validate_commission_source_payment();
 
 CREATE TABLE IF NOT EXISTS tenant_usage_monthly (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
