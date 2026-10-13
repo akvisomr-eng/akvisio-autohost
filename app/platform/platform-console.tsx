@@ -121,7 +121,7 @@ export default function PlatformConsole({ fullName, email }: { fullName: string;
 
   return (
     <main className="platform-console">
-      <header className="topbar"><div><p className="eyebrow">AKVISIO AUTOHOST · PLATFORM</p><h1>Super Admin</h1><p>Masuk sebagai {fullName} · {email}</p></div><div className="top-actions"><button className="secondary" onClick={() => void load()} disabled={loading}>Muat ulang</button><button className="logout" onClick={() => void logout()} disabled={busy}>Keluar</button></div></header>
+      <header className="topbar"><div><p className="eyebrow">AKVISIO AUTOHOST · PLATFORM</p><h1>Super Admin</h1><p>Masuk sebagai {fullName} · {email}</p></div><div className="top-actions"><a className="secondary" href="/platform/billing">Invoice & pembayaran</a><button className="secondary" onClick={() => void load()} disabled={loading}>Muat ulang</button><button className="logout" onClick={() => void logout()} disabled={busy}>Keluar</button></div></header>
       {error && <p className="alert error" role="alert">{error}</p>}
       {notice && <p className="alert success" role="status">{notice}</p>}
       <section className="stats">
