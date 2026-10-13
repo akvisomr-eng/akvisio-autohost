@@ -68,6 +68,42 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       }
     }
 
+    if (body.status === "verified" && payment.payment_type === "refund") {
+      // A refund must not exceed net verified receipts on the referenced invoice or booking.
+      if (payment.invoice_id) {
+        await client.query(
+          "SELECT id FROM invoices WHERE id = $1 AND organization_id = $2 FOR UPDATE",
+          [payment.invoice_id, session.organizationId],
+        );
+        const result = await client.query(
+          `SELECT COALESCE(SUM(CASE WHEN status = 'verified' AND payment_type <> 'refund' THEN amount
+                                    WHEN status = 'verified' AND payment_type = 'refund' THEN -amount ELSE 0 END), 0) AS net_received
+           FROM payments WHERE invoice_id = $1 AND organization_id = $2`,
+          [payment.invoice_id, session.organizationId],
+        );
+        if (Number(payment.amount) > Number(result.rows[0]?.net_received || 0)) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Pengembalian dana melebihi penerimaan bersih terverifikasi pada invoice." }, { status: 409 });
+        }
+      }
+      if (payment.booking_id) {
+        await client.query(
+          "SELECT id FROM bookings WHERE id = $1 AND organization_id = $2 FOR UPDATE",
+          [payment.booking_id, session.organizationId],
+        );
+        const result = await client.query(
+          `SELECT COALESCE(SUM(CASE WHEN status = 'verified' AND payment_type <> 'refund' THEN amount
+                                    WHEN status = 'verified' AND payment_type = 'refund' THEN -amount ELSE 0 END), 0) AS net_received
+           FROM payments WHERE booking_id = $1 AND organization_id = $2`,
+          [payment.booking_id, session.organizationId],
+        );
+        if (Number(payment.amount) > Number(result.rows[0]?.net_received || 0)) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Pengembalian dana melebihi penerimaan bersih terverifikasi pada pemesanan." }, { status: 409 });
+        }
+      }
+    }
+
     const updated = await client.query(
       `UPDATE payments SET status = $1,
          verified_by = CASE WHEN $1 = 'verified' THEN $2 ELSE NULL END,
