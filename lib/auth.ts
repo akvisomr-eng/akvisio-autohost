@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { getPool } from "@/lib/db";
 
 export const SESSION_COOKIE = "src_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
@@ -68,7 +69,31 @@ export function verifySessionToken(token: string | undefined): AppSession | null
 export async function getSession(): Promise<AppSession | null> {
   try {
     const jar = await cookies();
-    return verifySessionToken(jar.get(SESSION_COOKIE)?.value);
+    const tokenSession = verifySessionToken(jar.get(SESSION_COOKIE)?.value);
+    if (!tokenSession) return null;
+
+    // Revalidate active account and current role on every authenticated request.
+    const result = await getPool().query<{
+      id: string;
+      organization_id: string;
+      email: string;
+      full_name: string;
+      role: string;
+      is_active: boolean;
+    }>(
+      "SELECT id, organization_id, email, full_name, role, is_active FROM users WHERE id = $1 AND organization_id = $2 LIMIT 1",
+      [tokenSession.userId, tokenSession.organizationId],
+    );
+    const user = result.rows[0];
+    if (!user || !user.is_active) return null;
+    return {
+      ...tokenSession,
+      userId: user.id,
+      organizationId: user.organization_id,
+      email: user.email,
+      fullName: user.full_name,
+      role: user.role,
+    };
   } catch {
     return null;
   }
