@@ -1,6 +1,6 @@
 # SaaS billing foundation
 
-Migration `009_platform_billing_foundation.sql` introduces database structures only. It does not seed commercial prices, create an administrator, issue invoices, verify payments, or activate subscriptions.
+Migration `009_platform_billing_foundation.sql` introduces database structures only. Migration `012_seed_commercial_subscription_plans.sql` seeds the currently approved monthly prices and activation fee; it does not create an administrator, issue invoices, verify payments, or activate subscriptions.
 
 ## Tables
 - `platform_admins`: separate platform operator identities; distinct from tenant users.
@@ -18,3 +18,14 @@ Migration `009_platform_billing_foundation.sql` introduces database structures o
 4. Calculate commission only from verified eligible rental receipts; exclude refundable deposits, cancelled bookings, refunds, and reversed receipts per the signed plan. Apply monthly caps deterministically.
 5. Add transaction locks, tenant-integrity tests, idempotency tests, audit events, reconciliation reports, and subscription suspension/grace-period policies.
 6. Apply the migration to a dedicated Neon development branch and verify it before any production decision. No production database is modified by this repository change.
+
+
+## Commercial price catalogue (migration 012)
+
+| Plan | Activation (one-time) | Monthly subscription |
+|---|---:|---:|
+| Starter | Rp3.500.000 | Rp475.000 |
+| Business | Rp3.500.000 | Rp895.000 |
+| Pro | Rp3.500.000 | Rp1.595.000 |
+
+The migration updates only the plan catalogue's names, descriptions, activation fees, and monthly list prices for these plan codes. Existing tenant subscriptions retain their fee snapshots. Commission remains zero and no unapproved vehicle/user/conversation limits or AI-token allowances are invented. AI quotas, external WhatsApp/provider fees, taxes, and the annual 10% discount must be explicitly configured/implemented before selling those entitlements as available.
