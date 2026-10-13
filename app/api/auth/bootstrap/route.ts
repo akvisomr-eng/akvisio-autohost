@@ -42,26 +42,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Kata sandi harus terdiri dari 12–256 karakter." }, { status: 400 });
   }
 
+  const client = await getPool().connect();
   try {
-    const pool = getPool();
-    const org = await pool.query<{ id: string }>("SELECT id FROM organizations WHERE slug = $1 LIMIT 1", ["sans-rent-cars"]);
-    if (!org.rows[0]) return NextResponse.json({ error: "Organisasi Sans Rent Cars belum tersedia." }, { status: 503 });
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["sans-rent-cars-admin-bootstrap"]);
+    const org = await client.query<{ id: string }>("SELECT id FROM organizations WHERE slug = $1 LIMIT 1", ["sans-rent-cars"]);
+    if (!org.rows[0]) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Organisasi Sans Rent Cars belum tersedia." }, { status: 503 });
+    }
 
-    const existing = await pool.query<{ id: string }>(
+    const existing = await client.query<{ id: string }>(
       "SELECT id FROM users WHERE organization_id = $1 AND role IN ('owner','admin') LIMIT 1",
       [org.rows[0].id],
     );
     if (existing.rows[0]) {
+      await client.query("ROLLBACK");
       return NextResponse.json({ error: "Admin awal sudah dibuat. Gunakan halaman login." }, { status: 409 });
     }
 
-    const created = await pool.query<{ id: string; email: string; full_name: string; role: string }>(
+    const created = await client.query<{ id: string; email: string; full_name: string; role: string }>(
       "INSERT INTO users (organization_id, email, full_name, role, password_hash) VALUES ($1, $2, $3, 'owner', $4) RETURNING id, email, full_name, role",
       [org.rows[0].id, email, fullName, hashPassword(password)],
     );
+    await client.query("COMMIT");
     return NextResponse.json({ status: "created", user: created.rows[0] }, { status: 201 });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
     console.error("Admin bootstrap failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: "Bootstrap gagal. Periksa konfigurasi aplikasi dan database." }, { status: 503 });
+  } finally {
+    client.release();
   }
 }
