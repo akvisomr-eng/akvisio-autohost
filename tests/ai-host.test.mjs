@@ -23,7 +23,7 @@ test("prompt bounds knowledge and conversation history", () => {
   });
   assert.ok(messages[0].content.length < 14_000);
   assert.equal(messages.filter((message) => message.role !== "system").length, 13);
-  assert.equal(messages.at(-2)?.content, "8");
+  assert.equal(messages[1]?.content, "8");
 });
 
 test("provider response parser validates text and token usage", () => {
