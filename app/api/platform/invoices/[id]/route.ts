@@ -42,9 +42,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         return NextResponse.json({ error: "Hanya draft invoice yang dapat diterbitkan." }, { status: 409 });
       }
       const issue = parsed.data;
+      if (new Date(issue.dueAt).getTime() <= Date.now()) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "Tanggal jatuh tempo harus berada di masa depan." }, { status: 400 });
+      }
       let subtotal = Number(invoice.subtotal_amount);
       let commissionIds: string[] = [];
       if (invoice.invoice_type === "commission") {
+        await client.query("SELECT id FROM tenant_subscriptions WHERE id=$1 AND organization_id=$2 FOR UPDATE", [invoice.subscription_id, invoice.organization_id]);
         const entries = await client.query(
           `SELECT id FROM commission_entries
            WHERE organization_id = $1 AND subscription_id = $2 AND status = 'pending'
