@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAiHostMessages, parseAiHostResponse, readAiHostProviderResponse, estimateAiHostCost, isAiHostRateLimited, MAX_AI_PROVIDER_RESPONSE_BYTES } from "../lib/ai-host.ts";
+import { buildAiHostMessages, parseAiHostResponse, readAiHostProviderResponse, estimateAiHostCost, isAiHostRateLimited, isSafeAiHostBaseUrl, MAX_AI_PROVIDER_RESPONSE_BYTES } from "../lib/ai-host.ts";
 
 test("AI prompt explicitly treats knowledge and messages as untrusted data", () => {
   const messages = buildAiHostMessages({
@@ -59,4 +59,19 @@ test("AI Host rate limit blocks at the configured ceiling and fails closed on in
   assert.equal(isAiHostRateLimited(1, 1), true);
   assert.equal(isAiHostRateLimited(-1), true);
   assert.equal(isAiHostRateLimited(Number.NaN), true);
+});
+
+
+test("AI provider URL validator accepts HTTPS public endpoints only", () => {
+  assert.equal(isSafeAiHostBaseUrl("https://api.example.com/v1"), true);
+  assert.equal(isSafeAiHostBaseUrl("http://api.example.com/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://localhost/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://service.local/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://127.0.0.1/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://10.10.0.4/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://192.168.1.20/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://[::1]/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://user:pass@api.example.com/v1"), false);
+  assert.equal(isSafeAiHostBaseUrl("https://api.example.com/v1?token=x"), false);
+  assert.equal(isSafeAiHostBaseUrl("not a URL"), false);
 });
