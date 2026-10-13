@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAiHostMessages, parseAiHostResponse } from "../lib/ai-host.ts";
+import { buildAiHostMessages, parseAiHostResponse, readAiHostProviderResponse, estimateAiHostCost, MAX_AI_PROVIDER_RESPONSE_BYTES } from "../lib/ai-host.ts";
 
 test("AI prompt explicitly treats knowledge and messages as untrusted data", () => {
   const messages = buildAiHostMessages({
@@ -32,4 +32,22 @@ test("provider response parser validates text and token usage", () => {
     usage: { prompt_tokens: 15, completion_tokens: 4 },
   }), { content: "Halo", inputTokens: 15, outputTokens: 4 });
   assert.throws(() => parseAiHostResponse({ choices: [{ message: { content: "" } }] }));
+});
+
+
+test("provider response reader enforces a hard byte ceiling", async () => {
+  const tooLarge = new Response("x".repeat(MAX_AI_PROVIDER_RESPONSE_BYTES + 1));
+  await assert.rejects(readAiHostProviderResponse(tooLarge), /AI_PROVIDER_RESPONSE_TOO_LARGE/);
+});
+
+test("provider response reader parses bounded JSON and token usage", async () => {
+  const response = new Response(JSON.stringify({ choices: [{ message: { content: "  Jawaban aman  " } }], usage: { prompt_tokens: 1000, completion_tokens: 250 } }), { headers: { "content-type": "application/json" } });
+  assert.deepEqual(await readAiHostProviderResponse(response), { content: "Jawaban aman", inputTokens: 1000, outputTokens: 250 });
+});
+
+test("estimated AI cost requires explicit valid rates and records USD estimate", () => {
+  assert.equal(estimateAiHostCost(1000, 250, "0.002", "0.008"), 0.004);
+  assert.equal(estimateAiHostCost(1000, 250, undefined, "0.008"), undefined);
+  assert.equal(estimateAiHostCost(1000, 250, "-1", "0.008"), undefined);
+  assert.equal(estimateAiHostCost(undefined, 250, "0.002", "0.008"), undefined);
 });
