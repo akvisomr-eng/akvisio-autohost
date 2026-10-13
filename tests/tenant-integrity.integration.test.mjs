@@ -12,6 +12,7 @@ let client;
 let fixture;
 
 async function expectForeignKeyViolation(sql, params) {
+  await client.query("BEGIN");
   await client.query("SAVEPOINT tenant_integrity_case");
   let caught;
   try {
@@ -21,6 +22,7 @@ async function expectForeignKeyViolation(sql, params) {
   }
   await client.query("ROLLBACK TO SAVEPOINT tenant_integrity_case");
   await client.query("RELEASE SAVEPOINT tenant_integrity_case");
+  await client.query("COMMIT");
   assert.equal(caught?.code, "23503", "Expected foreign-key violation, got " + (caught?.code ?? "no error") + ": " + (caught?.message ?? ""));
 }
 
