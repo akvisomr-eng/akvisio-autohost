@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
   let dueAt: string | null = null;
   if (body.dueAt) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.dueAt) || !Number.isFinite(Date.parse(`${body.dueAt}T00:00:00Z`))) {
+    if (!isCalendarDate(body.dueAt)) {
       return NextResponse.json({ error: "Tanggal jatuh tempo harus berformat YYYY-MM-DD." }, { status: 400 });
     }
     dueAt = body.dueAt;
