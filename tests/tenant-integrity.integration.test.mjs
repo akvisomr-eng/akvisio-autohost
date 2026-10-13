@@ -38,6 +38,7 @@ before(async () => {
     "006_whatsapp_inbox_tenant_routing.sql",
     "007_whatsapp_outbound_idempotency.sql",
     "008_tenant_finance_integrity.sql",
+    "009_platform_billing_foundation.sql",
   ]) {
     await client.query(await readFile(resolve(here, "../database/migrations", file), "utf8"));
   }
@@ -84,6 +85,12 @@ after(async () => {
   if (!client) return;
   if (fixture) {
     const { orgA, orgB } = fixture;
+    await client.query("DELETE FROM commission_entries WHERE organization_id IN ($1, $2)", [orgA, orgB]);
+    await client.query("DELETE FROM platform_payments WHERE organization_id IN ($1, $2)", [orgA, orgB]);
+    await client.query("DELETE FROM platform_invoices WHERE organization_id IN ($1, $2)", [orgA, orgB]);
+    await client.query("DELETE FROM tenant_usage_monthly WHERE organization_id IN ($1, $2)", [orgA, orgB]);
+    await client.query("DELETE FROM tenant_subscriptions WHERE organization_id IN ($1, $2)", [orgA, orgB]);
+    if (fixture.planId) await client.query("DELETE FROM subscription_plans WHERE id = $1", [fixture.planId]);
     await client.query("DELETE FROM payments WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await client.query("DELETE FROM expenses WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await client.query("DELETE FROM vehicle_maintenance WHERE organization_id IN ($1, $2)", [orgA, orgB]);
@@ -144,5 +151,83 @@ test("database rejects cross-tenant foreign keys across booking, finance, and fl
       "INSERT INTO vehicle_maintenance (organization_id, vehicle_id, maintenance_type) VALUES ($1, $2, 'test')",
       [orgB, vehicleA],
     );
+  });
+});
+
+
+test("SaaS billing schema records commission only from verified eligible receipts", async (t) => {
+  const { orgA, orgB, bookingA } = fixture;
+  const planResult = await client.query(
+    "INSERT INTO subscription_plans (code, name, monthly_fee, commission_rate_bps) VALUES ($1, 'CI Test Plan', 100, 200) RETURNING id",
+    ["ci-plan-" + randomUUID()],
+  );
+  const planId = planResult.rows[0].id;
+  fixture.planId = planId;
+  const subResult = await client.query(
+    "INSERT INTO tenant_subscriptions (organization_id, plan_id, status, activation_status) VALUES ($1, $2, 'active', 'paid') RETURNING id",
+    [orgA, planId],
+  );
+  const subscriptionId = subResult.rows[0].id;
+  const pendingDeposit = await client.query(
+    "INSERT INTO payments (organization_id, booking_id, amount, payment_type, status) VALUES ($1, $2, 100, 'deposit', 'verified') RETURNING id",
+    [orgA, bookingA],
+  );
+
+  await t.test("deposit cannot be misclassified as commissionable rental revenue", async () => {
+    await client.query("BEGIN");
+    await client.query("SAVEPOINT commission_policy_case");
+    let caught;
+    try {
+      await client.query(
+        `INSERT INTO commission_entries
+         (organization_id, subscription_id, source_payment_id, source_booking_id, source_payment_type,
+          gross_amount, commissionable_amount, commission_rate_bps, commission_amount)
+         VALUES ($1, $2, $3, $4, 'rental', 100, 100, 200, 2)`,
+        [orgA, subscriptionId, pendingDeposit.rows[0].id, bookingA],
+      );
+    } catch (error) { caught = error; }
+    await client.query("ROLLBACK TO SAVEPOINT commission_policy_case");
+    await client.query("RELEASE SAVEPOINT commission_policy_case");
+    await client.query("COMMIT");
+    assert.equal(caught?.code, "23514", "Expected commission policy violation, got " + (caught?.code ?? "no error"));
+  });
+
+  await t.test("verified rental receipt can produce one commission entry", async () => {
+    const rental = await client.query(
+      "INSERT INTO payments (organization_id, booking_id, amount, payment_type, status) VALUES ($1, $2, 1000, 'rental', 'verified') RETURNING id",
+      [orgA, bookingA],
+    );
+    const entry = await client.query(
+      `INSERT INTO commission_entries
+       (organization_id, subscription_id, source_payment_id, source_booking_id, source_payment_type,
+        gross_amount, commissionable_amount, commission_rate_bps, commission_amount)
+       VALUES ($1, $2, $3, $4, 'rental', 1000, 1000, 200, 20)
+       RETURNING id`,
+      [orgA, subscriptionId, rental.rows[0].id, bookingA],
+    );
+    assert.ok(entry.rows[0].id);
+  });
+
+  await t.test("commission source must belong to the same tenant", async () => {
+    const rental = await client.query(
+      "INSERT INTO payments (organization_id, booking_id, amount, payment_type, status) VALUES ($1, $2, 1000, 'rental', 'verified') RETURNING id",
+      [orgA, bookingA],
+    );
+    await client.query("BEGIN");
+    await client.query("SAVEPOINT commission_tenant_case");
+    let caught;
+    try {
+      await client.query(
+        `INSERT INTO commission_entries
+         (organization_id, subscription_id, source_payment_id, source_booking_id, source_payment_type,
+          gross_amount, commissionable_amount, commission_rate_bps, commission_amount)
+         VALUES ($1, $2, $3, $4, 'rental', 1000, 1000, 200, 20)`,
+        [orgB, subscriptionId, rental.rows[0].id, bookingA],
+      );
+    } catch (error) { caught = error; }
+    await client.query("ROLLBACK TO SAVEPOINT commission_tenant_case");
+    await client.query("RELEASE SAVEPOINT commission_tenant_case");
+    await client.query("COMMIT");
+    assert.equal(caught?.code, "23503", "Expected cross-tenant FK violation, got " + (caught?.code ?? "no error"));
   });
 });
