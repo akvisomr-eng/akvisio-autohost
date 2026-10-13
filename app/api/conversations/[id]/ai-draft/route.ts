@@ -59,7 +59,7 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       pool.query(
         `SELECT direction, sender_type, body FROM messages
          WHERE organization_id = $1 AND conversation_id = $2
-         ORDER BY created_at DESC LIMIT 12`,
+         ORDER BY created_at DESC, id DESC LIMIT 12`,
         [session.organizationId, id],
       ),
     ]);
@@ -114,16 +114,56 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     if (!response.ok) throw new Error(`AI_PROVIDER_HTTP_${response.status}`);
     const parsed = await readAiHostProviderResponse(response);
     const estimatedCostUsd = estimateAiHostCost(parsed.inputTokens, parsed.outputTokens, process.env.AI_HOST_INPUT_USD_PER_1K_TOKENS, process.env.AI_HOST_OUTPUT_USD_PER_1K_TOKENS);
-    await pool.query(
-      `UPDATE ai_runs SET status = 'completed', input_tokens = $2, output_tokens = $3, estimated_cost = $4
-       WHERE id = $1 AND organization_id = $5`,
-      [runId, parsed.inputTokens ?? null, parsed.outputTokens ?? null, estimatedCostUsd ?? null, session.organizationId],
-    );
-    await pool.query(
-      `INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id, details)
-       VALUES ($1, $2, 'user', 'ai_host.draft.created', 'conversation', $3, $4::jsonb)`,
-      [session.organizationId, session.userId, id, JSON.stringify({ aiRunId: runId, provider: "openai-compatible", model, estimatedCostUsd: estimatedCostUsd ?? null })],
-    );
+
+    // Re-check the handoff state after the provider call. A human may have taken
+    // ownership while generation was in flight; do not surface a stale AI draft.
+    const completion = await pool.connect();
+    try {
+      await completion.query("BEGIN");
+      const currentConversation = await completion.query<{ status: string }>(
+        "SELECT status FROM conversations WHERE id = $1 AND organization_id = $2 FOR UPDATE",
+        [id, session.organizationId],
+      );
+      const currentStatus = currentConversation.rows[0]?.status;
+      const currentBlockReason = currentStatus ? getAiHostDraftBlockReason(currentStatus) : "conversation_closed";
+      if (currentBlockReason) {
+        await completion.query(
+          "UPDATE ai_runs SET status = 'blocked', safety_flags = safety_flags || $2::jsonb WHERE id = $1 AND organization_id = $3",
+          [runId, JSON.stringify(["handoff_state_changed_during_generation", currentBlockReason]), session.organizationId],
+        );
+        await completion.query(
+          `INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id, details)
+           VALUES ($1, $2, 'user', 'ai_host.draft.blocked_after_generation', 'conversation', $3, $4::jsonb)`,
+          [session.organizationId, session.userId, id, JSON.stringify({ aiRunId: runId, reason: currentBlockReason })],
+        );
+        await completion.query("COMMIT");
+        return NextResponse.json({
+          error: currentBlockReason === "human_handoff"
+            ? "Staf telah mengambil alih percakapan saat draf dibuat. Draf AI dibatalkan."
+            : "Percakapan telah ditutup saat draf dibuat. Draf AI dibatalkan.",
+        }, { status: 409 });
+      }
+      if (!currentStatus) {
+        await completion.query("ROLLBACK");
+        return NextResponse.json({ error: "Percakapan tidak ditemukan." }, { status: 404 });
+      }
+      await completion.query(
+        `UPDATE ai_runs SET status = 'completed', input_tokens = $2, output_tokens = $3, estimated_cost = $4
+         WHERE id = $1 AND organization_id = $5`,
+        [runId, parsed.inputTokens ?? null, parsed.outputTokens ?? null, estimatedCostUsd ?? null, session.organizationId],
+      );
+      await completion.query(
+        `INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id, details)
+         VALUES ($1, $2, 'user', 'ai_host.draft.created', 'conversation', $3, $4::jsonb)`,
+        [session.organizationId, session.userId, id, JSON.stringify({ aiRunId: runId, provider: "openai-compatible", model, estimatedCostUsd: estimatedCostUsd ?? null })],
+      );
+      await completion.query("COMMIT");
+    } catch (error) {
+      await completion.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      completion.release();
+    }
     return NextResponse.json({ draft: parsed.content, aiRunId: runId, sent: false });
   } catch (error) {
     if (runId) {
