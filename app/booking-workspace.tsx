@@ -46,6 +46,7 @@ export default function BookingWorkspace() {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -85,9 +86,27 @@ export default function BookingWorkspace() {
   const rentalDays = Math.max(1, Math.ceil((new Date(returnAt).getTime() - new Date(pickupAt).getTime()) / 86400000));
   const estimatedTotal = selectedVehicle ? Math.max(0, Number(selectedVehicle.daily_rate) * rentalDays) : 0;
 
+  async function updateStatus(booking: Booking, status: string) {
+    setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/bookings/" + booking.id, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error(await errorText(response));
+      setMessage("Status " + booking.booking_code + " diperbarui menjadi " + statusLabel(status) + ".");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Status pemesanan gagal diperbarui.");
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(""); setMessage(""); setSaving(true);
+    const requestKey = idempotencyKey || crypto.randomUUID();
+    setIdempotencyKey(requestKey);
     try {
       const response = await fetch("/api/bookings", {
         method: "POST",
@@ -97,12 +116,13 @@ export default function BookingWorkspace() {
           pickupAt: new Date(pickupAt).toISOString(),
           returnAt: new Date(returnAt).toISOString(),
           pickupLocation, returnLocation, depositAmount, notes,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: requestKey,
         }),
       });
       if (!response.ok) throw new Error(await errorText(response));
       const result = await response.json() as { data: { booking_code: string } };
       setMessage("Pemesanan " + result.data.booking_code + " berhasil dicatat. Status awal: menunggu.");
+      setIdempotencyKey("");
       setPickupLocation(""); setReturnLocation(""); setNotes(""); setDepositAmount("0");
       await load();
     } catch (e) {
@@ -131,7 +151,7 @@ export default function BookingWorkspace() {
         </form>}
       </section>
       <section className="panel booking-list-panel"><div className="panel-heading"><div><p className="eyebrow">RENTAL SCHEDULE</p><h2>Pemesanan terbaru <span className="count-bubble">{bookings.length}</span></h2></div></div>
-        {loading ? <p className="empty-state">Memuat data pemesanan…</p> : bookings.length === 0 ? <p className="empty-state">Belum ada pemesanan. Data baru akan tampil setelah tersimpan.</p> : <div className="booking-list">{bookings.map((b) => <article className="booking-card" key={b.id}><div className="booking-card-top"><strong>{b.booking_code}</strong><span className={"status-pill status-" + b.status}>{statusLabel(b.status)}</span></div><h3>{b.make} {b.model} <small>· {b.registration_number}</small></h3><p className="booking-customer">{b.customer_name || b.whatsapp_number || "Pelanggan"} {b.whatsapp_number ? "· " + b.whatsapp_number : ""}</p><div className="booking-dates"><div><small>PENGAMBILAN</small><strong>{dateLabel(b.pickup_at)}</strong><span>{b.pickup_location || "Lokasi belum ditentukan"}</span></div><div><small>PENGEMBALIAN</small><strong>{dateLabel(b.return_at)}</strong><span>{b.return_location || "Lokasi belum ditentukan"}</span></div></div><div className="booking-card-bottom"><span>{b.service_mode === "chauffeur" ? "Dengan sopir" : "Lepas kunci"} · Pembayaran {b.payment_status === "unpaid" ? "belum dibayar" : b.payment_status}</span><strong>{idr(b.estimated_total)}</strong></div></article>)}</div>}
+        {loading ? <p className="empty-state">Memuat data pemesanan…</p> : bookings.length === 0 ? <p className="empty-state">Belum ada pemesanan. Data baru akan tampil setelah tersimpan.</p> : <div className="booking-list">{bookings.map((b) => <article className="booking-card" key={b.id}><div className="booking-card-top"><strong>{b.booking_code}</strong><span className={"status-pill status-" + b.status}>{statusLabel(b.status)}</span></div><h3>{b.make} {b.model} <small>· {b.registration_number}</small></h3><p className="booking-customer">{b.customer_name || b.whatsapp_number || "Pelanggan"} {b.whatsapp_number ? "· " + b.whatsapp_number : ""}</p><div className="booking-dates"><div><small>PENGAMBILAN</small><strong>{dateLabel(b.pickup_at)}</strong><span>{b.pickup_location || "Lokasi belum ditentukan"}</span></div><div><small>PENGEMBALIAN</small><strong>{dateLabel(b.return_at)}</strong><span>{b.return_location || "Lokasi belum ditentukan"}</span></div></div><div className="booking-card-bottom"><span>{b.service_mode === "chauffeur" ? "Dengan sopir" : "Lepas kunci"} · Pembayaran {b.payment_status === "unpaid" ? "belum dibayar" : b.payment_status}</span><strong>{idr(b.estimated_total)}</strong></div>{(["pending", "held", "confirmed", "ongoing"].includes(b.status)) && <div className="booking-actions">{b.status === "pending" || b.status === "held" ? <><button type="button" className="secondary-button" onClick={() => void updateStatus(b, "confirmed")}>Konfirmasi</button><button type="button" className="danger-button" onClick={() => void updateStatus(b, "cancelled")}>Batalkan</button></> : b.status === "confirmed" ? <><button type="button" className="primary-button" onClick={() => void updateStatus(b, "ongoing")}>Mulai sewa</button><button type="button" className="danger-button" onClick={() => void updateStatus(b, "cancelled")}>Batalkan</button></> : <button type="button" className="primary-button" onClick={() => void updateStatus(b, "completed")}>Selesaikan sewa</button>}</div>}</article>)}</div>}
       </section>
     </div>
     <style>{bookingStyles}</style>
@@ -139,6 +159,6 @@ export default function BookingWorkspace() {
 }
 
 const bookingStyles = `
-.booking-workspace{display:grid;gap:18px}.booking-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.booking-intro h2{font-size:22px;margin:0 0 8px;letter-spacing:-.6px}.booking-intro p:not(.eyebrow){font-size:12px;line-height:1.7;color:var(--muted);max-width:760px;margin:0}.booking-layout{display:grid;grid-template-columns:minmax(320px,.88fr) minmax(0,1.12fr);gap:16px;align-items:start}.booking-form-panel,.booking-list-panel{min-width:0}.booking-step,.count-bubble{display:inline-grid;place-items:center;border-radius:8px;background:#e7f4ed;color:#176b4d;font-size:11px;font-weight:800;min-width:27px;height:27px;padding:0 7px}.booking-form-panel .panel-heading,.booking-list-panel .panel-heading{align-items:center}.booking-form-panel .data-form select,.booking-form-panel .data-form textarea{width:100%;min-width:0;padding:12px 13px;border:1px solid #dce4de;border-radius:10px;background:#fff;color:var(--ink);outline:none}.booking-estimate{background:#f3f8f4;border:1px solid #dfece3;border-radius:12px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px}.booking-estimate div span,.booking-estimate div strong{display:block}.booking-estimate div span{font-size:10px;color:var(--muted);margin-bottom:6px}.booking-estimate div strong{font-size:15px}.booking-estimate small{grid-column:1/-1;font-size:10px;color:var(--muted);line-height:1.6}.booking-list{display:grid;gap:12px}.booking-card{border:1px solid var(--line);border-radius:13px;padding:15px;min-width:0}.booking-card-top,.booking-card-bottom{display:flex;justify-content:space-between;align-items:center;gap:12px}.booking-card-top>strong{font-size:11px;letter-spacing:.5px}.booking-card h3{font-size:16px;margin:13px 0 5px}.booking-card h3 small{font-size:11px;color:var(--muted);font-weight:500}.booking-customer{font-size:11px;color:var(--muted);margin:0 0 14px}.booking-dates{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.booking-dates div>*{display:block}.booking-dates small{font-size:9px;letter-spacing:1px;color:var(--muted);margin-bottom:6px}.booking-dates strong{font-size:11px;line-height:1.5}.booking-dates span{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}.booking-card-bottom{padding-top:12px}.booking-card-bottom span{font-size:10px;color:var(--muted);line-height:1.5}.booking-card-bottom strong{font-size:13px;white-space:nowrap}.status-pending,.status-held{background:#fff3d8;color:#8a5a00}.status-confirmed{background:#e7f4ed;color:#176b4d}.status-ongoing{background:#e8f1ff;color:#235b9c}.status-completed{background:#edf0ee;color:#4b5c51}.status-cancelled,.status-rejected,.status-expired{background:#fff0ee;color:#9d3025}
+.booking-workspace{display:grid;gap:18px}.booking-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.booking-intro h2{font-size:22px;margin:0 0 8px;letter-spacing:-.6px}.booking-intro p:not(.eyebrow){font-size:12px;line-height:1.7;color:var(--muted);max-width:760px;margin:0}.booking-layout{display:grid;grid-template-columns:minmax(320px,.88fr) minmax(0,1.12fr);gap:16px;align-items:start}.booking-form-panel,.booking-list-panel{min-width:0}.booking-step,.count-bubble{display:inline-grid;place-items:center;border-radius:8px;background:#e7f4ed;color:#176b4d;font-size:11px;font-weight:800;min-width:27px;height:27px;padding:0 7px}.booking-form-panel .panel-heading,.booking-list-panel .panel-heading{align-items:center}.booking-form-panel .data-form select,.booking-form-panel .data-form textarea{width:100%;min-width:0;padding:12px 13px;border:1px solid #dce4de;border-radius:10px;background:#fff;color:var(--ink);outline:none}.booking-estimate{background:#f3f8f4;border:1px solid #dfece3;border-radius:12px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px}.booking-estimate div span,.booking-estimate div strong{display:block}.booking-estimate div span{font-size:10px;color:var(--muted);margin-bottom:6px}.booking-estimate div strong{font-size:15px}.booking-estimate small{grid-column:1/-1;font-size:10px;color:var(--muted);line-height:1.6}.booking-list{display:grid;gap:12px}.booking-card{border:1px solid var(--line);border-radius:13px;padding:15px;min-width:0}.booking-card-top,.booking-card-bottom{display:flex;justify-content:space-between;align-items:center;gap:12px}.booking-card-top>strong{font-size:11px;letter-spacing:.5px}.booking-card h3{font-size:16px;margin:13px 0 5px}.booking-card h3 small{font-size:11px;color:var(--muted);font-weight:500}.booking-customer{font-size:11px;color:var(--muted);margin:0 0 14px}.booking-dates{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.booking-dates div>*{display:block}.booking-dates small{font-size:9px;letter-spacing:1px;color:var(--muted);margin-bottom:6px}.booking-dates strong{font-size:11px;line-height:1.5}.booking-dates span{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}.booking-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.booking-actions .primary-button,.booking-actions .secondary-button,.booking-actions .danger-button{padding:8px 11px;font-size:10px}.danger-button{border:0;border-radius:10px;padding:12px 15px;font-size:12px;font-weight:800;cursor:pointer;background:#fff0ee;color:#9d3025}.booking-card-bottom{padding-top:12px}.booking-card-bottom span{font-size:10px;color:var(--muted);line-height:1.5}.booking-card-bottom strong{font-size:13px;white-space:nowrap}.status-pending,.status-held{background:#fff3d8;color:#8a5a00}.status-confirmed{background:#e7f4ed;color:#176b4d}.status-ongoing{background:#e8f1ff;color:#235b9c}.status-completed{background:#edf0ee;color:#4b5c51}.status-cancelled,.status-rejected,.status-expired{background:#fff0ee;color:#9d3025}
 @media(max-width:1150px){.booking-layout{grid-template-columns:1fr}}@media(max-width:620px){.booking-intro{flex-direction:column}.booking-dates{grid-template-columns:1fr}.booking-card-bottom{align-items:flex-start;flex-direction:column}.booking-estimate{grid-template-columns:1fr 1fr}}
 `;
