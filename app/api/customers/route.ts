@@ -59,8 +59,11 @@ export async function POST(request: NextRequest) {
   }
   if (notes && notes.length > 2000) return NextResponse.json({ error: "Catatan maksimal 2.000 karakter." }, { status: 400 });
 
+  let client: Awaited<ReturnType<ReturnType<typeof getPool>["connect"]>> | undefined;
   try {
-    const result = await getPool().query(
+    client = await getPool().connect();
+    await client.query("BEGIN");
+    const result = await client.query(
       `INSERT INTO customers (organization_id, full_name, whatsapp_number, email, preferred_locale, notes)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (organization_id, whatsapp_number) DO NOTHING
@@ -68,15 +71,20 @@ export async function POST(request: NextRequest) {
       [session.organizationId, fullName, whatsappNumber, email, preferredLocale, notes],
     );
     if (!result.rows[0]) {
+      await client.query("ROLLBACK");
       return NextResponse.json({ error: "Nomor WhatsApp sudah terdaftar pada organisasi ini." }, { status: 409 });
     }
-    await getPool().query(
+    await client.query(
       "INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id) VALUES ($1, $2, 'user', 'customer.created', 'customer', $3)",
       [session.organizationId, session.userId, result.rows[0].id],
     );
+    await client.query("COMMIT");
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => undefined);
     console.error("Customer create failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: "Pelanggan gagal disimpan." }, { status: 503 });
+  } finally {
+    client?.release();
   }
 }
