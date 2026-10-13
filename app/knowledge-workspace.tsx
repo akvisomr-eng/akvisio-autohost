@@ -16,6 +16,7 @@ const categoryLabel = Object.fromEntries(categories) as Record<string, string>;
 export default function KnowledgeWorkspace() {
   const [items, setItems] = useState<KnowledgeDoc[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [newDraftMode, setNewDraftMode] = useState(false);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("faq");
   const [content, setContent] = useState("");
@@ -32,6 +33,7 @@ export default function KnowledgeWorkspace() {
       if (!response.ok) throw new Error(result.error || "Knowledge base gagal dimuat.");
       const data = (result.data || []) as KnowledgeDoc[];
       setItems(data);
+      if (newDraftMode && !preferredId) { setSelectedId(""); return; }
       const selected = data.find((item) => item.id === (preferredId || selectedId));
       if (selected) {
         setSelectedId(selected.id); setTitle(selected.title); setCategory(selected.category); setContent(selected.content);
@@ -43,16 +45,18 @@ export default function KnowledgeWorkspace() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Knowledge base gagal dimuat.");
     } finally { setLoading(false); }
-  }, [selectedId]);
+  }, [selectedId, newDraftMode]);
 
   useEffect(() => { void load(); }, [load]);
 
   function selectItem(item: KnowledgeDoc) {
+    setNewDraftMode(false);
     setSelectedId(item.id); setTitle(item.title); setCategory(item.category); setContent(item.content);
     setError(""); setNotice("");
   }
 
   function newDraft() {
+    setNewDraftMode(true);
     setSelectedId(""); setTitle(""); setCategory("faq"); setContent(""); setError(""); setNotice("Mode dokumen baru. Dokumen akan disimpan sebagai draft.");
   }
 
@@ -70,6 +74,7 @@ export default function KnowledgeWorkspace() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Draft knowledge gagal disimpan.");
       const doc = result.data as KnowledgeDoc;
+      setNewDraftMode(false);
       setNotice(result.note || (editing ? "Perubahan tersimpan. Jika konten berubah, dokumen kembali menjadi draft untuk ditinjau." : "Draft tersimpan. Minta owner/admin/manager meninjau sebelum dipakai AI Host."));
       await load(doc.id);
     } catch (e) { setError(e instanceof Error ? e.message : "Draft knowledge gagal disimpan."); }
@@ -86,6 +91,7 @@ export default function KnowledgeWorkspace() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Status publikasi gagal diperbarui.");
+      setNewDraftMode(false);
       setNotice(publish ? "Dokumen diterbitkan. AI Host dapat menggunakannya sebagai sumber yang disetujui." : "Dokumen ditarik dari knowledge aktif AI Host.");
       await load(selectedId);
     } catch (e) { setError(e instanceof Error ? e.message : "Status publikasi gagal diperbarui."); }
