@@ -40,6 +40,7 @@ before(async () => {
     "008_tenant_finance_integrity.sql",
     "009_platform_billing_foundation.sql",
     "010_platform_admin_lockout.sql",
+    "011_platform_invoice_payment_integrity.sql",
   ]) {
     await client.query(await readFile(resolve(here, "../database/migrations", file), "utf8"));
   }
