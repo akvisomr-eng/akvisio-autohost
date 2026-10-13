@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { buildAiHostMessages, estimateAiHostCost, readAiHostProviderResponse } from "@/lib/ai-host";
+import { buildAiHostMessages, estimateAiHostCost, isAiHostRateLimited, readAiHostProviderResponse } from "@/lib/ai-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,15 +45,6 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ error: "Percakapan sudah ditutup. Buka kembali sebelum membuat draf." }, { status: 409 });
     }
 
-    const rate = await pool.query(
-      `SELECT COUNT(*)::int AS count FROM ai_runs
-       WHERE organization_id = $1 AND created_at > now() - interval '10 minutes'`,
-      [session.organizationId],
-    );
-    if (Number(rate.rows[0]?.count || 0) >= 20) {
-      return NextResponse.json({ error: "Batas draf AI sementara tercapai. Coba lagi beberapa menit." }, { status: 429 });
-    }
-
     const [knowledgeResult, historyResult] = await Promise.all([
       pool.query(
         `SELECT title, category, content FROM knowledge_documents
@@ -73,13 +64,35 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ error: "Tidak ada pesan pelanggan terbaru untuk dijawab." }, { status: 409 });
     }
 
-    const insertedRun = await pool.query(
-      `INSERT INTO ai_runs (organization_id, conversation_id, provider, model, intent, status, safety_flags)
-       VALUES ($1, $2, 'openai-compatible', $3, 'staff_requested_draft', 'running', $4::jsonb)
-       RETURNING id`,
-      [session.organizationId, id, model, JSON.stringify(["manual_draft_only", "no_outbound", "tenant_scoped_knowledge"])],
-    );
-    runId = insertedRun.rows[0].id as string;
+    // Serialize quota reservation per tenant so concurrent requests cannot all pass
+    // the same count check. The running ai_runs row is inserted before releasing the lock.
+    const reservation = await pool.connect();
+    try {
+      await reservation.query("BEGIN");
+      await reservation.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [session.organizationId]);
+      const rate = await reservation.query(
+        `SELECT COUNT(*)::int AS count FROM ai_runs
+         WHERE organization_id = $1 AND created_at > now() - interval '10 minutes'`,
+        [session.organizationId],
+      );
+      if (isAiHostRateLimited(Number(rate.rows[0]?.count ?? 0))) {
+        await reservation.query("ROLLBACK");
+        return NextResponse.json({ error: "Batas draf AI sementara tercapai. Coba lagi beberapa menit." }, { status: 429 });
+      }
+      const insertedRun = await reservation.query(
+        `INSERT INTO ai_runs (organization_id, conversation_id, provider, model, intent, status, safety_flags)
+         VALUES ($1, $2, 'openai-compatible', $3, 'staff_requested_draft', 'running', $4::jsonb)
+         RETURNING id`,
+        [session.organizationId, id, model, JSON.stringify(["manual_draft_only", "no_outbound", "tenant_scoped_knowledge"])],
+      );
+      runId = insertedRun.rows[0].id as string;
+      await reservation.query("COMMIT");
+    } catch (error) {
+      await reservation.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      reservation.release();
+    }
 
     const messages = buildAiHostMessages({
       tenantName: conversation.tenant_name,

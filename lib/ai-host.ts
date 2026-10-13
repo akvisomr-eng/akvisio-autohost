@@ -111,3 +111,11 @@ export function estimateAiHostCost(inputTokens: number | undefined, outputTokens
   const value = (inputTokens * inputRate + outputTokens * outputRate) / 1000;
   return Math.round((value + Number.EPSILON) * 1000000) / 1000000;
 }
+
+
+/** Fail closed on invalid counters; the route reserves quota under a tenant-scoped DB lock. */
+export function isAiHostRateLimited(recentRuns: number, maxRuns = 20): boolean {
+  return !Number.isInteger(recentRuns) || recentRuns < 0
+    || !Number.isInteger(maxRuns) || maxRuns < 1
+    || recentRuns >= maxRuns;
+}
