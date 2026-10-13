@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { evaluateWhatsAppOutboundPolicy } from "@/lib/whatsapp-outbound-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -121,6 +122,30 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       await client.query("ROLLBACK");
       return NextResponse.json({ error: "Nomor WhatsApp pelanggan tidak valid." }, { status: 409 });
     }
+
+    // Enforce the trial allowlist/expiry and approved Meta number at runtime,
+    // before writing a queued message or contacting the provider.
+    const outboundPolicy = evaluateWhatsAppOutboundPolicy({
+      enabled: process.env.WHATSAPP_OUTBOUND_ENABLED,
+      mode: process.env.WHATSAPP_OUTBOUND_MODE,
+      now: Date.now(),
+      recipient,
+      phoneNumberId,
+      configuredPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+      productionActivated: process.env.WHATSAPP_PRODUCTION_ACTIVATED,
+      trialStartsAt: process.env.WHATSAPP_TRIAL_STARTS_AT,
+      trialEndsAt: process.env.WHATSAPP_TRIAL_ENDS_AT,
+      trialAllowedRecipients: process.env.WHATSAPP_TRIAL_ALLOWED_RECIPIENTS,
+      trialPhoneNumberId: process.env.WHATSAPP_TRIAL_PHONE_NUMBER_ID,
+    });
+    if (!outboundPolicy.allowed) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({
+        error: outboundPolicy.reason,
+        code: outboundPolicy.code,
+      }, { status: 503 });
+    }
+
     const inserted = await client.query(
       `INSERT INTO messages
          (organization_id, conversation_id, client_request_id, direction, sender_type, body, delivery_status, metadata)
