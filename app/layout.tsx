@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sans Rent Cars | Rental Operations",
-  description: "Dashboard operasional rental mobil Sans Rent Cars.",
+  title: "AKVISIO Autohost | AI Customer Host",
+  description: "AI Host dan platform operasi pelanggan multi-tenant dari AKVISIO.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
