@@ -51,3 +51,12 @@ Official references:
 - Meta announcement: https://about.fb.com/news/2026/06/meta-business-agent/
 - WhatsApp Help Center availability note: https://faq.whatsapp.com/1153795669452207/
 - Official WhatsApp Cloud API collection: https://www.postman.com/meta/whatsapp-business-platform/collection/wlk6lh4/whatsapp-cloud-api
+
+## Trial / activation policy (important)
+
+- Do not connect the customer's existing WhatsApp number, subscribe its webhook, or set its phone-number ID just because the CRM code is ready. Payment/activation is still pending.
+- Outbound messaging is blocked by default: `WHATSAPP_OUTBOUND_ENABLED=false`. The API returns HTTP 503 unless an authorized operator explicitly enables it server-side.
+- A three-day trial is acceptable only when it is explicitly agreed with the account owner and uses a verified test number / test business setup that is permitted by Meta. Keep the trial isolated from the not-yet-paid production number. Do not use production customer conversations as synthetic tests.
+- At trial start, record the start/end timestamp, scope, responsible operator, and allowed test recipients. At expiry, disable outbound immediately and remove test credentials/number mapping if the trial is not converted.
+- Never put tokens in Git or browser-visible environment variables. A blank `NEXT_PUBLIC_BUSINESS_WHATSAPP` intentionally avoids displaying/linking the not-yet-authorized business number in the public UI.
+- Turning on the feature flag alone is not proof of Meta eligibility, trial entitlement, or successful delivery. Verify Meta's current rules and perform a controlled test before allowing use.
