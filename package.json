@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:whatsapp-policy": "node --experimental-strip-types --test tests/whatsapp-outbound-policy.test.mjs"
+    "test:whatsapp-policy": "node --experimental-strip-types --test tests/whatsapp-outbound-policy.test.mjs",
+    "test:finance-validation": "node --experimental-strip-types --test tests/finance-validation.test.mjs",
+    "test": "npm run test:whatsapp-policy && npm run test:finance-validation"
   },
   "dependencies": {
     "next": "^15.5.0",
