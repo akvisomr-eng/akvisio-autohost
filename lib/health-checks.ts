@@ -1,4 +1,4 @@
-import { isSafeAiHostBaseUrl } from "@/lib/ai-host";
+import { isSafeAiHostBaseUrl } from "./ai-host.ts";
 
 export type HealthComponentStatus = "ok" | "not_configured" | "disabled" | "error";
 
