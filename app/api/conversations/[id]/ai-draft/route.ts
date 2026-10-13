@@ -125,7 +125,11 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
         [id, session.organizationId],
       );
       const currentStatus = currentConversation.rows[0]?.status;
-      const currentBlockReason = currentStatus ? getAiHostDraftBlockReason(currentStatus) : "conversation_closed";
+      if (!currentStatus) {
+        await completion.query("ROLLBACK");
+        return NextResponse.json({ error: "Percakapan tidak ditemukan." }, { status: 404 });
+      }
+      const currentBlockReason = getAiHostDraftBlockReason(currentStatus);
       if (currentBlockReason) {
         await completion.query(
           "UPDATE ai_runs SET status = 'blocked', safety_flags = safety_flags || $2::jsonb WHERE id = $1 AND organization_id = $3",
@@ -142,10 +146,6 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
             ? "Staf telah mengambil alih percakapan saat draf dibuat. Draf AI dibatalkan."
             : "Percakapan telah ditutup saat draf dibuat. Draf AI dibatalkan.",
         }, { status: 409 });
-      }
-      if (!currentStatus) {
-        await completion.query("ROLLBACK");
-        return NextResponse.json({ error: "Percakapan tidak ditemukan." }, { status: 404 });
       }
       await completion.query(
         `UPDATE ai_runs SET status = 'completed', input_tokens = $2, output_tokens = $3, estimated_cost = $4
