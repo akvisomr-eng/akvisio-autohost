@@ -56,7 +56,10 @@ Official references:
 
 - Do not connect the customer's existing WhatsApp number, subscribe its webhook, or set its phone-number ID just because the CRM code is ready. Payment/activation is still pending.
 - Outbound messaging is blocked by default: `WHATSAPP_OUTBOUND_ENABLED=false`. The API returns HTTP 503 unless an authorized operator explicitly enables it server-side.
+- The runtime also requires an explicit `WHATSAPP_OUTBOUND_MODE=trial` or `production`; missing or unknown modes fail closed.
+- Trial mode requires `WHATSAPP_TRIAL_PHONE_NUMBER_ID` to match the tenant's mapped phone-number ID, a start and end timestamp including a timezone, and `WHATSAPP_TRIAL_ALLOWED_RECIPIENTS` containing only approved E.164 numbers separated by commas. The end must be after the start, the trial may not exceed 72 hours, and sending is blocked before the start and at/after expiry.
+- Production mode requires both `WHATSAPP_PRODUCTION_ACTIVATED=true` and `WHATSAPP_PHONE_NUMBER_ID` matching the tenant's mapped number. This setting must only be applied after paid activation and an authorized operator's review.
 - A three-day trial is acceptable only when it is explicitly agreed with the account owner and uses a verified test number / test business setup that is permitted by Meta. Keep the trial isolated from the not-yet-paid production number. Do not use production customer conversations as synthetic tests.
-- At trial start, record the start/end timestamp, scope, responsible operator, and allowed test recipients. At expiry, disable outbound immediately and remove test credentials/number mapping if the trial is not converted.
+- At trial start, record the start/end timestamp, scope, responsible operator, and allowed test recipients. The runtime gate blocks sends at expiry; the responsible operator must also disable the flag and remove trial credentials/number mapping if the trial is not converted.
 - Never put tokens in Git or browser-visible environment variables. A blank `NEXT_PUBLIC_BUSINESS_WHATSAPP` intentionally avoids displaying/linking the not-yet-authorized business number in the public UI.
-- Turning on the feature flag alone is not proof of Meta eligibility, trial entitlement, or successful delivery. Verify Meta's current rules and perform a controlled test before allowing use.
+- The policy helper has automated tests for disabled mode, recipient allowlisting, malformed settings, the 72-hour maximum, expiry, and production activation. CI tests do not prove Meta eligibility or successful provider delivery.
