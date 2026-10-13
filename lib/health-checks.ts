@@ -6,6 +6,7 @@ export type HealthChecks = {
   application: "ok";
   core_configuration: HealthComponentStatus;
   database: "ok" | "not_configured" | "error";
+  database_schema: HealthComponentStatus;
   whatsapp_webhook: HealthComponentStatus;
   whatsapp_processor: HealthComponentStatus;
   whatsapp_outbound: HealthComponentStatus;
@@ -32,7 +33,7 @@ function coreConfigurationStatus(env: Record<string, string | undefined>): Healt
 }
 
 /** Reports capabilities using the actual server-side environment variable names. */
-export function buildHealthChecks(env: Record<string, string | undefined>, database: HealthChecks["database"]): HealthChecks {
+export function buildHealthChecks(env: Record<string, string | undefined>, database: HealthChecks["database"], databaseSchema: HealthComponentStatus = database): HealthChecks {
   const whatsappWebhook: HealthComponentStatus = env.WHATSAPP_VERIFY_TOKEN && env.WHATSAPP_APP_SECRET
     ? "ok" : "not_configured";
   const whatsappProcessor: HealthComponentStatus = env.WHATSAPP_PROCESSOR_SECRET ? "ok" : "not_configured";
@@ -62,6 +63,7 @@ export function buildHealthChecks(env: Record<string, string | undefined>, datab
     application: "ok",
     core_configuration: coreConfigurationStatus(env),
     database,
+    database_schema: databaseSchema,
     whatsapp_webhook: whatsappWebhook,
     whatsapp_processor: whatsappProcessor,
     whatsapp_outbound: whatsappOutbound,
@@ -71,5 +73,5 @@ export function buildHealthChecks(env: Record<string, string | undefined>, datab
 
 /** Core readiness requires the database and valid session/bootstrap secrets plus public origin. */
 export function isApplicationReady(checks: HealthChecks): boolean {
-  return checks.database === "ok" && checks.core_configuration === "ok";
+  return checks.database === "ok" && checks.database_schema === "ok" && checks.core_configuration === "ok";
 }
