@@ -132,19 +132,18 @@ export function isSafeAiHostBaseUrl(value: string | undefined): boolean {
     if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost")
       || hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".test")) return false;
     // IPv6 literals are bracketed by URL.hostname in some runtimes.
-    if (hostname.includes(":")) {
-      if (hostname === "::" || hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd")
-        || /^fe[89ab]/.test(hostname) || hostname.startsWith("::ffff:127.") || hostname.startsWith("::ffff:10.")
-        || hostname.startsWith("::ffff:192.168.") || hostname.startsWith("::ffff:169.254.")) return false;
-      return true;
-    }
+    // Reject IPv6 literals altogether. Provider endpoints should use a DNS hostname;
+    // this avoids incomplete allow/deny lists for IPv6 special-purpose ranges.
+    if (hostname.includes(":")) return false;
     const parts = hostname.split(".");
     if (parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
       const [a, b] = parts.map(Number);
       if (a === 0 || a === 10 || a === 127 || a >= 224
         || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
         || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)
-        || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19))) return false;
+        || (a === 192 && (b === 0 || b === 88))
+        || (a === 198 && (b === 18 || b === 19 || b === 51))
+        || (a === 203 && b === 0 && Number(parts[2]) === 113)) return false;
     }
     return true;
   } catch {
