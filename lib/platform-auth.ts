@@ -64,6 +64,6 @@ export const platformSessionCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict" as const,
-  path: "/platform",
+  path: "/",
   maxAge: SESSION_TTL_SECONDS,
 };
