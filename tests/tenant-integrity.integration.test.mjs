@@ -39,6 +39,7 @@ before(async () => {
     "007_whatsapp_outbound_idempotency.sql",
     "008_tenant_finance_integrity.sql",
     "009_platform_billing_foundation.sql",
+    "010_platform_admin_lockout.sql",
   ]) {
     await client.query(await readFile(resolve(here, "../database/migrations", file), "utf8"));
   }
