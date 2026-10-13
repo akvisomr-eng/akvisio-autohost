@@ -119,3 +119,35 @@ export function isAiHostRateLimited(recentRuns: number, maxRuns = 20): boolean {
     || !Number.isInteger(maxRuns) || maxRuns < 1
     || recentRuns >= maxRuns;
 }
+
+
+/** Validate an operator-configured AI endpoint before making a server-side request.
+ * HTTPS alone is insufficient: reject local/private IP literals and local hostnames. */
+export function isSafeAiHostBaseUrl(value: string | undefined): boolean {
+  if (!value?.trim()) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return false;
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost")
+      || hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".test")) return false;
+    // IPv6 literals are bracketed by URL.hostname in some runtimes.
+    if (hostname.includes(":")) {
+      if (hostname === "::" || hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd")
+        || /^fe[89ab]/.test(hostname) || hostname.startsWith("::ffff:127.") || hostname.startsWith("::ffff:10.")
+        || hostname.startsWith("::ffff:192.168.") || hostname.startsWith("::ffff:169.254.")) return false;
+      return true;
+    }
+    const parts = hostname.split(".");
+    if (parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
+      const [a, b] = parts.map(Number);
+      if (a === 0 || a === 10 || a === 127 || a >= 224
+        || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+        || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)
+        || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19))) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
