@@ -1,5 +1,7 @@
 "use client";
 
+import InvoiceWorkspace from "@/app/invoice-workspace";
+
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type Booking = { id: string; booking_code: string; customer_name: string | null; registration_number: string; make: string; model: string; status: string };
@@ -132,6 +134,7 @@ export default function FinanceWorkspace() {
           {loading ? <p className="empty-state">Memuat data keuangan…</p> : pending.length ? <div className="finance-list">{pending.map((p) => <div className="finance-list-item" key={p.id}><div className="finance-item-main"><strong>{p.booking_code || "Pembayaran"}</strong><span>{p.customer_name || "Pelanggan"} · {paymentTypeLabel[p.payment_type] || p.payment_type}</span><b>{money(p.amount)}</b><small>{p.provider}{p.provider_reference ? ` · Ref: ${p.provider_reference}` : ""} · {dateLabel(p.created_at)}</small></div><div className="finance-actions"><button type="button" className="primary-button" disabled={busy} onClick={() => void decidePayment(p.id, "verified")}>Verifikasi</button><button type="button" className="secondary-button" disabled={busy} onClick={() => void decidePayment(p.id, "rejected")}>Tolak</button></div></div>)}</div> : <p className="empty-state">Tidak ada pembayaran yang menunggu verifikasi.</p>}
         </article>
       </section>
+      <InvoiceWorkspace />
       <section className="content-grid">
         <article className="panel"><div className="panel-heading"><div><p className="eyebrow">ARUS MASUK</p><h2>Pembayaran terbaru</h2></div></div>{loading ? <p className="empty-state">Memuat…</p> : data?.payments.length ? <div className="table-wrap"><table><thead><tr><th>Tanggal</th><th>Pemesanan</th><th>Nominal</th><th>Status</th></tr></thead><tbody>{data.payments.slice(0, 12).map((p) => <tr key={p.id}><td>{dateLabel(p.created_at)}</td><td>{p.booking_code || "—"}<small className="cell-note">{paymentTypeLabel[p.payment_type] || p.payment_type}</small></td><td>{money(p.amount)}</td><td><span className={`finance-status ${p.status}`}>{statusLabel[p.status] || p.status}</span></td></tr>)}</tbody></table></div> : <p className="empty-state">Belum ada pembayaran dicatat.</p>}</article>
         <article className="panel"><div className="panel-heading"><div><p className="eyebrow">ARUS KELUAR</p><h2>Pengeluaran terbaru</h2></div></div>{loading ? <p className="empty-state">Memuat…</p> : data?.expenses.length ? <div className="table-wrap"><table><thead><tr><th>Tanggal</th><th>Keterangan</th><th>Nominal</th></tr></thead><tbody>{data.expenses.slice(0, 12).map((e) => <tr key={e.id}><td>{dateLabel(e.spent_at)}</td><td>{e.category}<small className="cell-note">{e.description}{e.registration_number ? ` · ${e.registration_number}` : ""}</small></td><td>{money(e.amount)}</td></tr>)}</tbody></table></div> : <p className="empty-state">Belum ada pengeluaran dicatat.</p>}</article>
