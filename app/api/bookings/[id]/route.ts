@@ -49,6 +49,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       await client.query("ROLLBACK");
       return NextResponse.json({ error: "Pemesanan tidak ditemukan." }, { status: 404 });
     }
+    if (session.role === "staff" && !["pending", "held"].includes(booking.status)) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Staf hanya dapat membatalkan pemesanan yang masih menunggu atau ditahan." }, { status: 403 });
+    }
     if (!transitions[booking.status]?.includes(nextStatus)) {
       await client.query("ROLLBACK");
       return NextResponse.json({ error: `Perubahan status dari ${booking.status} ke ${nextStatus} tidak diizinkan.` }, { status: 409 });
