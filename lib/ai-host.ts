@@ -119,3 +119,5 @@ export function isAiHostRateLimited(recentRuns: number, maxRuns = 20): boolean {
     || !Number.isInteger(maxRuns) || maxRuns < 1
     || recentRuns >= maxRuns;
 }
+
+export { isSafeAiHostBaseUrl } from "./ai-host-url.mjs";

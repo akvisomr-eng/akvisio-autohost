@@ -46,3 +46,35 @@ test("database failure prevents readiness", () => {
   assert.equal(isApplicationReady(buildHealthChecks({}, "error")), false);
   assert.equal(isApplicationReady(buildHealthChecks({}, "not_configured")), false);
 });
+
+
+test("health does not mark private or malformed AI provider URLs ready", () => {
+  for (const url of ["https://localhost/v1", "https://127.0.0.1/v1", "http://provider.example/v1"]) {
+    const checks = buildHealthChecks({
+      AI_HOST_ENABLED: "true",
+      AI_HOST_API_KEY: "secret",
+      AI_HOST_BASE_URL: url,
+      AI_HOST_MODEL: "model-a",
+    }, "ok");
+    assert.equal(checks.ai_draft, "not_configured", url);
+  }
+});
+
+ 
+test("health rejects all literal IPv6 endpoints and documentation IPv4 ranges", () => {
+  for (const url of [
+    "https://[::1]/v1",
+    "https://[fd00::1]/v1",
+    "https://192.0.2.10/v1",
+    "https://198.51.100.20/v1",
+    "https://203.0.113.20/v1",
+  ]) {
+    const checks = buildHealthChecks({
+      AI_HOST_ENABLED: "true",
+      AI_HOST_API_KEY: "secret",
+      AI_HOST_BASE_URL: url,
+      AI_HOST_MODEL: "model-a",
+    }, "ok");
+    assert.equal(checks.ai_draft, "not_configured", url);
+  }
+});

@@ -40,3 +40,8 @@ Requires an authenticated tenant staff role and the latest conversation message 
 - The quota check and creation of the `ai_runs` reservation execute in one PostgreSQL transaction under a tenant-scoped advisory lock, preventing concurrent requests from bypassing the ceiling.
 - Invalid quota counters fail closed.
 - Optional `AI_HOST_INPUT_USD_PER_1K_TOKENS` and `AI_HOST_OUTPUT_USD_PER_1K_TOKENS` are provider-specific USD rates per 1,000 tokens. Keep them blank until verified against the selected provider's pricing.
+
+
+## Provider endpoint safety
+
+The configured provider URL must be HTTPS and must not include embedded credentials, query strings, or fragments. Local hostnames and common private, loopback, link-local, and reserved IP literal ranges are rejected before a server-side request. This is a configuration guard, not a substitute for egress controls or review of the selected provider. Use a trusted public provider endpoint and keep its API key server-side.
