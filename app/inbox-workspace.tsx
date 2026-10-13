@@ -23,6 +23,13 @@ export default function InboxWorkspace() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  const loadThread = useCallback(async (id: string) => {
+    const response = await fetch(`/api/conversations?conversationId=${encodeURIComponent(id)}`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Percakapan gagal dimuat.");
+    setThread(result as Thread);
+  }, []);
+
   const loadList = useCallback(async (preferredId?: string) => {
     setLoading(true); setError("");
     try {
@@ -42,14 +49,9 @@ export default function InboxWorkspace() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Inbox gagal dimuat.");
     } finally { setLoading(false); }
-  }, [selectedId]);
+  }, [selectedId, loadThread]);
 
-  const loadThread = useCallback(async (id: string) => {
-    const response = await fetch(`/api/conversations?conversationId=${encodeURIComponent(id)}`, { cache: "no-store" });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Percakapan gagal dimuat.");
-    setThread(result as Thread);
-  }, []);
+
 
   useEffect(() => { void loadList(); }, [loadList]);
 
