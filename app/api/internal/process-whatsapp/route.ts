@@ -69,7 +69,7 @@ function messageTime(timestamp?: string) {
   return new Date();
 }
 
-async function processPayload(client: PoolClient, eventId: string, payload: MetaPayload) {
+async function processPayload(client: PoolClient, payload: MetaPayload) {
   if (payload.object !== "whatsapp_business_account" || !Array.isArray(payload.entry)) {
     throw new Error("Payload bukan event WhatsApp Business Account yang valid.");
   }
@@ -164,8 +164,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Akses pemroses webhook ditolak." }, { status: process.env.WHATSAPP_PROCESSOR_SECRET ? 401 : 503 });
   }
   let requestedBatch = MAX_BATCH;
+  let retryFailed = false;
   try {
     const body = await request.json().catch(() => ({}));
+    if (body && typeof body === "object" && "retryFailed" in body) retryFailed = (body as { retryFailed: unknown }).retryFailed === true;
     if (body && typeof body === "object" && "limit" in body) {
       const limit = Number((body as { limit: unknown }).limit);
       if (!Number.isInteger(limit) || limit < 1 || limit > MAX_BATCH) {
@@ -186,16 +188,17 @@ export async function POST(request: NextRequest) {
     await client.query("BEGIN");
     const pending = await client.query(
       `SELECT id, payload FROM webhook_events
-       WHERE provider = 'meta_whatsapp' AND processing_status = 'pending'
+       WHERE provider = 'meta_whatsapp'
+         AND (processing_status = 'pending' OR ($2::boolean AND processing_status = 'failed' AND attempts < 10))
        ORDER BY received_at ASC LIMIT $1 FOR UPDATE SKIP LOCKED`,
-      [requestedBatch],
+      [requestedBatch, retryFailed],
     );
     for (const event of pending.rows as Array<{ id: string; payload: MetaPayload }>) {
       const savepoint = `event_${processed + failed}`;
       await client.query(`SAVEPOINT ${savepoint}`);
       try {
         await client.query("UPDATE webhook_events SET processing_status = 'processing', attempts = attempts + 1 WHERE id = $1", [event.id]);
-        const result = await processPayload(client, event.id, event.payload);
+        const result = await processPayload(client, event.payload);
         await client.query(
           "UPDATE webhook_events SET processing_status = 'processed', processed_at = now(), last_error = NULL WHERE id = $1",
           [event.id],
