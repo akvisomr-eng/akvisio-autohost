@@ -81,7 +81,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       }
       const updated = await client.query(
         `UPDATE platform_invoices SET subtotal_amount=$1, discount_amount=$2, tax_amount=$3, total_amount=$4,
-          status='issued', due_at=$4::timestamptz, issued_at=now(), updated_at=now()
+          status='issued', due_at=$5::timestamptz, issued_at=now(), updated_at=now()
          WHERE id=$6 RETURNING *`,
         [subtotal, discount, issue.taxAmount, total, issue.dueAt, id],
       );
