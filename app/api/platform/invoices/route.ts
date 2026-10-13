@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       }
       if (!["active", "past_due"].includes(subscription.status)) {
         await client.query("ROLLBACK");
-        return NextResponse.json({ error: "Invoice bulanan hanya dapat dibuat untuk subscription aktif atau menunggak." }, { status: 409 });
+        return NextResponse.json({ error: "Invoice subscription hanya dapat dibuat untuk subscription aktif atau menunggak." }, { status: 409 });
       }
       const calculated = calculateSubscriptionInvoice(Number(subscription.monthly_fee_amount), cycle);
       if (!calculated) {
