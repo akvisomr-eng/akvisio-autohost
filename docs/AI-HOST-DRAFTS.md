@@ -22,3 +22,13 @@ Requires an authenticated tenant staff role and the latest conversation message 
 - Availability, prices not in approved knowledge, and booking status must not be invented; this prompt has no live fleet-availability tool.
 - Provider calls are disabled unless `AI_HOST_ENABLED=true` and all HTTPS endpoint, key, and model settings are present.
 - Before enabling, use a dedicated test tenant and approved provider credentials; monitor cost and run end-to-end tests. This is not a live autonomous AI Host.
+
+
+## Provider response limits and cost estimates
+
+- Provider responses are read with a hard 128 KiB ceiling and rejected if the JSON payload is invalid or lacks a text answer.
+- The provider call has a 15-second timeout; failures are recorded as failed AI runs and never trigger an outbound message.
+- Token usage is saved to `ai_runs` when the provider supplies usage metadata.
+- Optional `AI_HOST_INPUT_USD_PER_1K_TOKENS` and `AI_HOST_OUTPUT_USD_PER_1K_TOKENS` values define explicit per-1,000-token rates in USD. When both rates and token counts are present and valid, `ai_runs.estimated_cost` stores an estimate in USD and the audit event includes that estimate. If either rate is absent or invalid, estimated cost remains null rather than inventing a rate.
+- These estimates are operational approximations, not provider invoices. Reconcile against the provider's actual usage/billing dashboard.
+- `AI_HOST_ENABLED` remains `false` by default. This improvement does not enable automatic replies or WhatsApp outbound sending.
