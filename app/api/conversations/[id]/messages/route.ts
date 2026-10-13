@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
