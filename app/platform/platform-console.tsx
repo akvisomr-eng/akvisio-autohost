@@ -12,7 +12,7 @@ type Plan = {
 type Tenant = {
   id: string; name: string; slug: string; created_at: string; subscription_id: string | null;
   subscription_status: string | null; activation_status: string | null; plan_id: string | null;
-  plan_name: string | null; open_platform_invoices: number;
+  plan_name: string | null; billing_cycle: "monthly" | "yearly" | null; open_platform_invoices: number;
 };
 
 const idr = (value: string | number | null | undefined) => Number(value || 0).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -42,6 +42,7 @@ export default function PlatformConsole({ fullName, email }: { fullName: string;
   const [aiTokens, setAiTokens] = useState("0");
   const [selectedTenant, setSelectedTenant] = useState("");
   const [selectedPlan, setSelectedPlan] = useState("");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -98,7 +99,7 @@ export default function PlatformConsole({ fullName, email }: { fullName: string;
     try {
       const response = await fetch("/api/platform/subscriptions", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId: selectedTenant, planId: selectedPlan, billingCycle: "monthly" }),
+        body: JSON.stringify({ organizationId: selectedTenant, planId: selectedPlan, billingCycle }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Paket tenant gagal ditetapkan.");
@@ -165,6 +166,7 @@ export default function PlatformConsole({ fullName, email }: { fullName: string;
           <form className="plan-form" onSubmit={(event) => void assignPlan(event)}>
             <label>Tenant belum memiliki subscription<select value={selectedTenant} onChange={(event) => setSelectedTenant(event.target.value)} required><option value="">Pilih tenant</option>{unassigned.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name} · {tenant.slug}</option>)}</select></label>
             <label>Paket aktif<select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)} required><option value="">Pilih paket</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · {idr(plan.monthly_fee)}/bulan</option>)}</select></label>
+            <label>Periode langganan<select value={billingCycle} onChange={(event) => setBillingCycle(event.target.value as "monthly" | "yearly")}><option value="monthly">Bulanan</option><option value="yearly">Tahunan (diskon langganan 10%)</option></select></label>
             <p className="notice">Penetapan paket membuat subscription berstatus menunggu aktivasi. Ini belum menerbitkan invoice, memverifikasi pembayaran, atau mengaktifkan layanan.</p>
             <button className="primary" type="submit" disabled={busy || !selectedTenant || !selectedPlan}>{busy ? "Memproses…" : "Tetapkan paket"}</button>
           </form>
@@ -172,7 +174,7 @@ export default function PlatformConsole({ fullName, email }: { fullName: string;
         </article>
       </section>
       <section className="panel tenants-panel"><div className="panel-heading"><div><p className="eyebrow">TENANT DIRECTORY</p><h2>Daftar tenant ({tenants.length})</h2></div></div>
-        {loading ? <p className="empty">Memuat tenant…</p> : tenants.length ? <div className="table-wrap"><table><thead><tr><th>Tenant</th><th>Paket</th><th>Status subscription</th><th>Status aktivasi</th><th>Invoice terbuka</th><th>Aksi</th></tr></thead><tbody>{tenants.map((tenant) => <tr key={tenant.id}><td><strong>{tenant.name}</strong><small>{tenant.slug}</small></td><td>{tenant.plan_name || "Belum ditetapkan"}</td><td><span className="status">{tenant.subscription_status ? statusLabel[tenant.subscription_status] || tenant.subscription_status : "Belum ada"}</span></td><td>{tenant.activation_status || "—"}</td><td>{tenant.open_platform_invoices}</td><td><div className="tenant-actions">{tenant.subscription_id && tenant.subscription_status === "pending_activation" && ["paid", "waived"].includes(tenant.activation_status || "") && <button type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "activate")} disabled={busy}>Aktifkan</button>}{tenant.subscription_id && ["active", "past_due", "trialing"].includes(tenant.subscription_status || "") && <button type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "suspend")} disabled={busy}>Tangguhkan</button>}{tenant.subscription_id && tenant.subscription_status === "suspended" && <button type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "reactivate")} disabled={busy}>Pulihkan</button>}{tenant.subscription_id && ["pending_activation", "trialing", "active", "past_due", "suspended"].includes(tenant.subscription_status || "") && <button className="cancel" type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "cancel")} disabled={busy}>Batalkan</button>}</div></td></tr>)}</tbody></table></div> : <p className="empty">Belum ada tenant.</p>}
+        {loading ? <p className="empty">Memuat tenant…</p> : tenants.length ? <div className="table-wrap"><table><thead><tr><th>Tenant</th><th>Paket</th><th>Status subscription</th><th>Status aktivasi</th><th>Invoice terbuka</th><th>Aksi</th></tr></thead><tbody>{tenants.map((tenant) => <tr key={tenant.id}><td><strong>{tenant.name}</strong><small>{tenant.slug}</small></td><td>{tenant.plan_name || "Belum ditetapkan"}{tenant.billing_cycle === "yearly" ? " · Tahunan" : tenant.billing_cycle === "monthly" ? " · Bulanan" : ""}</td><td><span className="status">{tenant.subscription_status ? statusLabel[tenant.subscription_status] || tenant.subscription_status : "Belum ada"}</span></td><td>{tenant.activation_status || "—"}</td><td>{tenant.open_platform_invoices}</td><td><div className="tenant-actions">{tenant.subscription_id && tenant.subscription_status === "pending_activation" && ["paid", "waived"].includes(tenant.activation_status || "") && <button type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "activate")} disabled={busy}>Aktifkan</button>}{tenant.subscription_id && ["active", "past_due", "trialing"].includes(tenant.subscription_status || "") && <button type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "suspend")} disabled={busy}>Tangguhkan</button>}{tenant.subscription_id && tenant.subscription_status === "suspended" && <button type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "reactivate")} disabled={busy}>Pulihkan</button>}{tenant.subscription_id && ["pending_activation", "trialing", "active", "past_due", "suspended"].includes(tenant.subscription_status || "") && <button className="cancel" type="button" onClick={() => void subscriptionAction(tenant.subscription_id!, "cancel")} disabled={busy}>Batalkan</button>}</div></td></tr>)}</tbody></table></div> : <p className="empty">Belum ada tenant.</p>}
       </section>
       <p className="footer-note">Fondasi pengelolaan paket dan subscription. Penerbitan invoice, verifikasi pembayaran, komisi otomatis, penangguhan, dan pemulihan layanan belum diaktifkan.</p>
       <style jsx>{`
