@@ -3,8 +3,13 @@ import assert from "node:assert/strict";
 import { buildHealthChecks, isApplicationReady } from "../lib/health-checks.ts";
 
 test("core readiness depends on database, not optional AI or WhatsApp integrations", () => {
-  const checks = buildHealthChecks({}, "ok");
+  const checks = buildHealthChecks({
+    SESSION_SECRET: "s".repeat(40), BOOTSTRAP_SECRET: "b".repeat(40),
+    PLATFORM_SESSION_SECRET: "p".repeat(40), PLATFORM_BOOTSTRAP_SECRET: "q".repeat(40),
+    APP_BASE_URL: "http://localhost:3000", NODE_ENV: "test",
+  }, "ok");
   assert.equal(isApplicationReady(checks), true);
+  assert.equal(checks.core_configuration, "ok");
   assert.equal(checks.ai_draft, "disabled");
   assert.equal(checks.whatsapp_outbound, "disabled");
 });
@@ -77,4 +82,28 @@ test("health rejects all literal IPv6 endpoints and documentation IPv4 ranges", 
     }, "ok");
     assert.equal(checks.ai_draft, "not_configured", url);
   }
+});
+
+
+test("core readiness fails closed when session/bootstrap secrets are weak or missing", () => {
+  const base = {
+    SESSION_SECRET: "s".repeat(40), BOOTSTRAP_SECRET: "b".repeat(40),
+    PLATFORM_SESSION_SECRET: "p".repeat(40), PLATFORM_BOOTSTRAP_SECRET: "q".repeat(40),
+    APP_BASE_URL: "https://autohost.example.com", NODE_ENV: "production",
+  };
+  assert.equal(isApplicationReady(buildHealthChecks(base, "ok")), true);
+  assert.equal(isApplicationReady(buildHealthChecks({ ...base, SESSION_SECRET: "short" }, "ok")), false);
+  assert.equal(isApplicationReady(buildHealthChecks({ ...base, PLATFORM_BOOTSTRAP_SECRET: undefined }, "ok")), false);
+  assert.equal(isApplicationReady(buildHealthChecks({ ...base, APP_BASE_URL: "http://autohost.example.com" }, "ok")), false);
+  assert.equal(isApplicationReady(buildHealthChecks({ ...base, APP_BASE_URL: "https://user:pass@autohost.example.com" }, "ok")), false);
+});
+
+test("local HTTP origin is allowed only outside production", () => {
+  const env = {
+    SESSION_SECRET: "s".repeat(40), BOOTSTRAP_SECRET: "b".repeat(40),
+    PLATFORM_SESSION_SECRET: "p".repeat(40), PLATFORM_BOOTSTRAP_SECRET: "q".repeat(40),
+    APP_BASE_URL: "http://localhost:3000",
+  };
+  assert.equal(buildHealthChecks({ ...env, NODE_ENV: "development" }, "ok").core_configuration, "ok");
+  assert.equal(buildHealthChecks({ ...env, NODE_ENV: "production" }, "ok").core_configuration, "not_configured");
 });
