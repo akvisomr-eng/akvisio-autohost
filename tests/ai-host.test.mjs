@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAiHostMessages, parseAiHostResponse, readAiHostProviderResponse, estimateAiHostCost, MAX_AI_PROVIDER_RESPONSE_BYTES } from "../lib/ai-host.ts";
+import { buildAiHostMessages, parseAiHostResponse, readAiHostProviderResponse, estimateAiHostCost, isAiHostRateLimited, MAX_AI_PROVIDER_RESPONSE_BYTES } from "../lib/ai-host.ts";
 
 test("AI prompt explicitly treats knowledge and messages as untrusted data", () => {
   const messages = buildAiHostMessages({
@@ -50,4 +50,13 @@ test("estimated AI cost requires explicit valid rates and records USD estimate",
   assert.equal(estimateAiHostCost(1000, 250, undefined, "0.008"), undefined);
   assert.equal(estimateAiHostCost(1000, 250, "-1", "0.008"), undefined);
   assert.equal(estimateAiHostCost(undefined, 250, "0.002", "0.008"), undefined);
+});
+
+test("AI Host rate limit blocks at the configured ceiling and fails closed on invalid counters", () => {
+  assert.equal(isAiHostRateLimited(19), false);
+  assert.equal(isAiHostRateLimited(20), true);
+  assert.equal(isAiHostRateLimited(0, 1), false);
+  assert.equal(isAiHostRateLimited(1, 1), true);
+  assert.equal(isAiHostRateLimited(-1), true);
+  assert.equal(isAiHostRateLimited(Number.NaN), true);
 });
