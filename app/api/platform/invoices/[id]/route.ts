@@ -47,6 +47,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         return NextResponse.json({ error: "Tanggal jatuh tempo harus berada di masa depan." }, { status: 400 });
       }
       let subtotal = Number(invoice.subtotal_amount);
+      let discount = Number(invoice.discount_amount || 0);
       let commissionIds: string[] = [];
       if (invoice.invoice_type === "commission") {
         await client.query("SELECT id FROM tenant_subscriptions WHERE id=$1 AND organization_id=$2 FOR UPDATE", [invoice.subscription_id, invoice.organization_id]);
@@ -67,17 +68,22 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
           [commissionIds, invoice.organization_id],
         );
         subtotal = Number(sum.rows[0]?.amount || 0);
+        discount = 0;
       }
-      const total = Math.round((subtotal + issue.taxAmount) * 100) / 100;
+      if (!Number.isFinite(discount) || discount < 0 || discount > subtotal) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "Nilai diskon invoice tidak valid." }, { status: 409 });
+      }
+      const total = Math.round((subtotal - discount + issue.taxAmount) * 100) / 100;
       if (!Number.isFinite(total) || total <= 0) {
         await client.query("ROLLBACK");
         return NextResponse.json({ error: "Total invoice harus lebih besar dari nol." }, { status: 400 });
       }
       const updated = await client.query(
-        `UPDATE platform_invoices SET subtotal_amount=$1, tax_amount=$2, total_amount=$3,
-          status='issued', due_at=$4::timestamptz, issued_at=now(), updated_at=now()
-         WHERE id=$5 RETURNING *`,
-        [subtotal, issue.taxAmount, total, issue.dueAt, id],
+        `UPDATE platform_invoices SET subtotal_amount=$1, discount_amount=$2, tax_amount=$3, total_amount=$4,
+          status='issued', due_at=$5::timestamptz, issued_at=now(), updated_at=now()
+         WHERE id=$6 RETURNING *`,
+        [subtotal, discount, issue.taxAmount, total, issue.dueAt, id],
       );
       if (commissionIds.length) {
         await client.query(
@@ -88,7 +94,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       await client.query(
         `INSERT INTO platform_audit_logs (platform_admin_id, actor_type, action, entity_type, entity_id, details)
          VALUES ($1, 'platform_admin', 'platform_invoice.issued', 'platform_invoice', $2, $3::jsonb)`,
-        [session.platformAdminId, id, JSON.stringify({ invoiceNumber: invoice.invoice_number, subtotal, taxAmount: issue.taxAmount, total, dueAt: issue.dueAt })],
+        [session.platformAdminId, id, JSON.stringify({ invoiceNumber: invoice.invoice_number, subtotal, discount, taxAmount: issue.taxAmount, total, dueAt: issue.dueAt })],
       );
       await client.query("COMMIT");
       return NextResponse.json({ data: updated.rows[0] });

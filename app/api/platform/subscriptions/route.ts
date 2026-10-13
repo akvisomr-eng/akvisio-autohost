@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   organizationId: z.string().uuid(),
   planId: z.string().uuid(),
-  billingCycle: z.literal("monthly").default("monthly"),
+  billingCycle: z.enum(["monthly", "yearly"]).default("monthly"),
 });
 
 export async function POST(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   catch { return NextResponse.json({ error: "Format permintaan tidak valid." }, { status: 400 }); }
   const parsed = schema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: "Tenant, paket, atau siklus tagihan tidak valid." }, { status: 400 });
-  const { organizationId, planId } = parsed.data;
+  const { organizationId, planId, billingCycle } = parsed.data;
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -51,17 +51,17 @@ export async function POST(request: NextRequest) {
       `INSERT INTO tenant_subscriptions
        (organization_id, plan_id, status, billing_cycle, activation_fee_amount, activation_status,
         monthly_fee_amount, commission_rate_bps, commission_cap_amount)
-       VALUES ($1, $2, 'pending_activation', 'monthly', $3, $4, $5, $6, $7)
+       VALUES ($1, $2, 'pending_activation', $8, $3, $4, $5, $6, $7)
        RETURNING id, organization_id, plan_id, status, billing_cycle, activation_fee_amount, activation_status,
                  monthly_fee_amount, commission_rate_bps, commission_cap_amount, created_at`,
       [organizationId, planId, activationFee, activationFee > 0 ? "due" : "waived",
-       plan.monthly_fee, plan.commission_rate_bps, plan.commission_cap_amount],
+       plan.monthly_fee, plan.commission_rate_bps, plan.commission_cap_amount, billingCycle],
     );
     const subscription = result.rows[0];
     await client.query(
       `INSERT INTO platform_audit_logs (platform_admin_id, actor_type, action, entity_type, entity_id, details)
        VALUES ($1, 'platform_admin', 'tenant_subscription.assigned', 'tenant_subscription', $2, $3::jsonb)`,
-      [session.platformAdminId, subscription.id, JSON.stringify({ organizationId, planId, billingCycle: "monthly", status: "pending_activation" })],
+      [session.platformAdminId, subscription.id, JSON.stringify({ organizationId, planId, billingCycle, status: "pending_activation" })],
     );
     await client.query("COMMIT");
     return NextResponse.json({ data: subscription, message: "Paket ditetapkan. Subscription masih pending activation; invoice dan verifikasi pembayaran belum dibuat otomatis." }, { status: 201 });

@@ -41,6 +41,8 @@ before(async () => {
     "009_platform_billing_foundation.sql",
     "010_platform_admin_lockout.sql",
     "011_platform_invoice_payment_integrity.sql",
+    "012_seed_commercial_subscription_plans.sql",
+    "013_annual_subscription_discount.sql",
   ]) {
     await client.query(await readFile(resolve(here, "../database/migrations", file), "utf8"));
   }
@@ -232,4 +234,17 @@ test("SaaS billing schema records commission only from verified eligible receipt
     await client.query("COMMIT");
     assert.equal(caught?.code, "23503", "Expected cross-tenant FK violation, got " + (caught?.code ?? "no error"));
   });
+});
+
+
+test("approved commercial plan prices and activation fee are seeded", async () => {
+  const result = await client.query(
+    "SELECT code, activation_fee::numeric(14,2)::text AS activation_fee, monthly_fee::numeric(14,2)::text AS monthly_fee FROM subscription_plans WHERE code = ANY($1::text[]) ORDER BY CASE code WHEN 'starter' THEN 1 WHEN 'business' THEN 2 WHEN 'pro' THEN 3 ELSE 4 END",
+    [["starter", "business", "pro"]],
+  );
+  assert.deepEqual(result.rows, [
+    { code: "starter", activation_fee: "3500000.00", monthly_fee: "475000.00" },
+    { code: "business", activation_fee: "3500000.00", monthly_fee: "895000.00" },
+    { code: "pro", activation_fee: "3500000.00", monthly_fee: "1595000.00" },
+  ]);
 });

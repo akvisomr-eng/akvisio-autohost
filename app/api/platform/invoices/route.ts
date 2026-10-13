@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPlatformSession } from "@/lib/platform-auth";
 import { getPool } from "@/lib/db";
+import { calculateSubscriptionInvoice, isValidBillingPeriod } from "@/lib/platform-billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,19 +16,6 @@ const createSchema = z.object({
   periodEnd: z.string().optional(),
 });
 
-function validDate(value: string | undefined) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(value + "T00:00:00.000Z");
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-function validMonthRange(start: string, end: string) {
-  if (!validDate(start) || !validDate(end)) return false;
-  const s = new Date(start + "T00:00:00.000Z");
-  const e = new Date(end + "T00:00:00.000Z");
-  const last = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-  return s.getUTCDate() === 1 && s.getUTCFullYear() === e.getUTCFullYear()
-    && s.getUTCMonth() === e.getUTCMonth() && end === last;
-}
 
 export async function GET() {
   const session = await getPlatformSession();
@@ -35,7 +23,7 @@ export async function GET() {
   try {
     const result = await getPool().query(
       `SELECT i.id, i.organization_id, o.name AS tenant_name, i.subscription_id, i.invoice_number,
-              i.invoice_type, i.period_start, i.period_end, i.currency, i.subtotal_amount,
+              i.invoice_type, i.period_start, i.period_end, i.currency, i.subtotal_amount, i.discount_amount,
               i.tax_amount, i.total_amount, i.status, i.due_at, i.issued_at, i.created_at,
               COALESCE(paid.total, 0)::numeric(14,2) AS verified_amount
        FROM platform_invoices i
@@ -64,8 +52,13 @@ export async function POST(request: NextRequest) {
   const input = parsed.data;
   if (input.invoiceType === "activation") {
     if (input.periodStart || input.periodEnd) return NextResponse.json({ error: "Invoice aktivasi tidak menggunakan periode bulanan." }, { status: 400 });
-  } else if (!input.periodStart || !input.periodEnd || !validMonthRange(input.periodStart, input.periodEnd)) {
-    return NextResponse.json({ error: "Periode subscription/komisi harus satu bulan kalender penuh." }, { status: 400 });
+  } else if (!input.periodStart || !input.periodEnd
+    || (!isValidBillingPeriod(input.periodStart, input.periodEnd, "monthly")
+      && !isValidBillingPeriod(input.periodStart, input.periodEnd, "yearly"))) {
+    return NextResponse.json({ error: "Periode invoice harus berupa bulan kalender penuh atau periode tahunan 12 bulan." }, { status: 400 });
+  }
+  if (input.invoiceType === "commission" && !isValidBillingPeriod(input.periodStart, input.periodEnd, "monthly")) {
+    return NextResponse.json({ error: "Periode komisi harus satu bulan kalender penuh." }, { status: 400 });
   }
 
   const client = await getPool().connect();
@@ -97,6 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     let subtotal = 0;
+    let discount = 0;
     if (input.invoiceType === "activation") {
       if (subscription.status !== "pending_activation" || subscription.activation_status !== "due") {
         await client.query("ROLLBACK");
@@ -104,11 +98,22 @@ export async function POST(request: NextRequest) {
       }
       subtotal = Number(subscription.activation_fee_amount);
     } else if (input.invoiceType === "subscription") {
+      const cycle = subscription.billing_cycle === "yearly" ? "yearly" : "monthly";
+      if (!isValidBillingPeriod(input.periodStart, input.periodEnd, cycle)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: cycle === "yearly" ? "Langganan tahunan harus mencakup tepat 12 bulan kalender." : "Langganan bulanan harus mencakup satu bulan kalender penuh." }, { status: 400 });
+      }
       if (!["active", "past_due"].includes(subscription.status)) {
         await client.query("ROLLBACK");
-        return NextResponse.json({ error: "Invoice bulanan hanya dapat dibuat untuk subscription aktif atau menunggak." }, { status: 409 });
+        return NextResponse.json({ error: "Invoice subscription hanya dapat dibuat untuk subscription aktif atau menunggak." }, { status: 409 });
       }
-      subtotal = Number(subscription.monthly_fee_amount);
+      const calculated = calculateSubscriptionInvoice(Number(subscription.monthly_fee_amount), cycle);
+      if (!calculated) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "Nilai paket subscription tidak valid." }, { status: 409 });
+      }
+      subtotal = calculated.subtotal;
+      discount = calculated.discount;
     } else {
       if (!["active", "past_due"].includes(subscription.status) || Number(subscription.commission_rate_bps) <= 0) {
         await client.query("ROLLBACK");
@@ -133,20 +138,21 @@ export async function POST(request: NextRequest) {
     const created = await client.query(
       `INSERT INTO platform_invoices
        (organization_id, subscription_id, invoice_number, invoice_type, period_start, period_end,
-        subtotal_amount, tax_amount, total_amount, status, idempotency_key, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$7,'draft',$8,$9)
+        subtotal_amount, discount_amount, tax_amount, total_amount, status, idempotency_key, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$7-$8,'draft',$9,$10)
        RETURNING id, organization_id, subscription_id, invoice_number, invoice_type, period_start, period_end,
-                 subtotal_amount, tax_amount, total_amount, status, idempotency_key, created_at`,
+                 subtotal_amount, discount_amount, tax_amount, total_amount, status, idempotency_key, created_at`,
       [organizationId, input.subscriptionId, invoiceNumber, input.invoiceType,
         input.invoiceType === "activation" ? null : input.periodStart,
         input.invoiceType === "activation" ? null : input.periodEnd,
-        subtotal, input.idempotencyKey, "Draft; tax treatment and due date must be reviewed before issue."],
+        subtotal, discount, input.idempotencyKey,
+        discount > 0 ? "Draft; annual subscription list price for 12 months with 10% discount; tax and due date require review." : "Draft; tax treatment and due date must be reviewed before issue."],
     );
     const invoice = created.rows[0];
     await client.query(
       `INSERT INTO platform_audit_logs (platform_admin_id, actor_type, action, entity_type, entity_id, details)
        VALUES ($1, 'platform_admin', 'platform_invoice.draft_created', 'platform_invoice', $2, $3::jsonb)`,
-      [session.platformAdminId, invoice.id, JSON.stringify({ organizationId, subscriptionId: input.subscriptionId, invoiceType: input.invoiceType, subtotal })],
+      [session.platformAdminId, invoice.id, JSON.stringify({ organizationId, subscriptionId: input.subscriptionId, invoiceType: input.invoiceType, subtotal, discount, billingCycle: subscription.billing_cycle })],
     );
     await client.query("COMMIT");
     return NextResponse.json({ data: invoice, message: "Draft invoice dibuat. Tentukan perlakuan pajak dan tanggal jatuh tempo sebelum menerbitkan." }, { status: 201 });
