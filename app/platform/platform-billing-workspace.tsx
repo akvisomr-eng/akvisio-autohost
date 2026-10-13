@@ -3,14 +3,19 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Tenant = { id: string; name: string; slug: string; subscription_id: string | null; subscription_status: string | null; activation_status: string | null; plan_name: string | null };
-type Invoice = { id: string; organization_id: string; tenant_name: string; subscription_id: string; invoice_number: string; invoice_type: string; period_start: string | null; period_end: string | null; currency: string; subtotal_amount: string | number; tax_amount: string | number; total_amount: string | number; status: string; due_at: string | null; verified_amount: string | number; created_at: string };
+type Tenant = { id: string; name: string; slug: string; subscription_id: string | null; subscription_status: string | null; activation_status: string | null; plan_name: string | null; billing_cycle: "monthly" | "yearly" | null };
+type Invoice = { id: string; organization_id: string; tenant_name: string; subscription_id: string; invoice_number: string; invoice_type: string; period_start: string | null; period_end: string | null; currency: string; subtotal_amount: string | number; discount_amount: string | number; tax_amount: string | number; total_amount: string | number; status: string; due_at: string | null; verified_amount: string | number; created_at: string };
 type Payment = { id: string; tenant_name: string; invoice_number: string; platform_invoice_id: string; amount: string | number; provider: string; provider_reference: string | null; status: string; received_at: string; notes: string | null };
 
 function monthRange() {
   const now = new Date(); const year = now.getFullYear(); const month = now.getMonth();
   const pad = (n: number) => String(n).padStart(2, "0");
   return { start: `${year}-${pad(month + 1)}-01`, end: `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}` };
+}
+function yearRange() {
+  const now = new Date(); const start = new Date(now.getFullYear(), now.getMonth(), 1); const end = new Date(now.getFullYear() + 1, now.getMonth(), 0);
+  const fmt = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return { start: fmt(start), end: fmt(end) };
 }
 function previousMonthRange() {
   const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth() - 1, 1); const last = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -80,6 +85,16 @@ export default function PlatformBillingWorkspace() {
   }, [router]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (invoiceType === "activation") return;
+    const tenant = tenants.find((item) => item.subscription_id === selectedTenant);
+    if (invoiceType === "subscription" && tenant?.billing_cycle === "yearly") {
+      const year = yearRange(); setPeriodStart(year.start); setPeriodEnd(year.end);
+    } else {
+      const month = monthRange(); setPeriodStart(month.start); setPeriodEnd(month.end);
+    }
+  }, [selectedTenant, invoiceType, tenants]);
 
   async function settleCommissions() {
     if (busy) return;
@@ -196,12 +211,12 @@ export default function PlatformBillingWorkspace() {
         <article className="panel"><p className="eyebrow">DRAFT GENERATOR</p><h2>Buat draft invoice</h2>
           <form className="billing-form" onSubmit={(event) => void createInvoice(event)}>
             <label>Tenant dan subscription<select value={selectedTenant} onChange={(event) => setSelectedTenant(event.target.value)} required><option value="">Pilih subscription</option>{tenants.filter((t) => t.subscription_id && ["pending_activation", "trialing", "active", "past_due"].includes(t.subscription_status || "")).map((tenant) => <option key={tenant.subscription_id} value={tenant.subscription_id!}>{tenant.name} · {tenant.plan_name} · {tenant.subscription_status}</option>)}</select></label>
-            <label>Jenis invoice<select value={invoiceType} onChange={(event) => setInvoiceType(event.target.value)}><option value="activation">Biaya aktivasi</option><option value="subscription">Langganan bulanan</option><option value="commission">Komisi transaksi</option></select></label>
+            <label>Jenis invoice<select value={invoiceType} onChange={(event) => setInvoiceType(event.target.value)}><option value="activation">Biaya aktivasi</option><option value="subscription">Langganan {tenants.find((t) => t.subscription_id === selectedTenant)?.billing_cycle === "yearly" ? "tahunan (diskon 10%)" : "bulanan"}</option><option value="commission">Komisi transaksi</option></select></label>
             {invoiceType !== "activation" && <div className="two"><label>Periode mulai<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} required /></label><label>Periode akhir<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} required /></label></div>}
             <label>Idempotency key (opsional)<input value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} minLength={8} maxLength={128} placeholder="Otomatis dibuat jika kosong" /></label>
             <button className="primary" type="submit" disabled={busy || !selectedTenant}>{busy ? "Memproses…" : "Buat draft"}</button>
           </form>
-          <p className="help">Draft menghitung nilai dari snapshot subscription atau entri komisi pending. Draft belum dikirim kepada tenant.</p>
+          <p className="help">Draft menghitung nilai dari snapshot subscription atau entri komisi pending. Langganan tahunan ditagih untuk 12 bulan dengan diskon 10%; biaya aktivasi tetap terpisah. Draft belum dikirim kepada tenant.</p>
         </article>
         <article className="panel"><p className="eyebrow">ISSUE CONTROL</p><h2>Terbitkan atau batalkan invoice</h2>
           <form className="billing-form" onSubmit={(event) => void issueInvoice(event)}>
@@ -226,7 +241,7 @@ export default function PlatformBillingWorkspace() {
         </article>
       </section>
       <section className="panel"><p className="eyebrow">INVOICE REGISTER</p><h2>Daftar invoice ({invoices.length})</h2>
-        {loading ? <p className="empty">Memuat invoice…</p> : invoices.length ? <div className="table-wrap"><table><thead><tr><th>Invoice</th><th>Tenant</th><th>Jenis</th><th>Total</th><th>Terverifikasi</th><th>Status</th><th>Jatuh tempo</th><th>Aksi</th></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id} onClick={() => invoice.status === "draft" && setSelectedInvoice(invoice.id)} className={selectedInvoice === invoice.id ? "selected" : ""}><td>{invoice.invoice_number}</td><td>{invoice.tenant_name}</td><td>{invoiceLabel[invoice.invoice_type] || invoice.invoice_type}</td><td>{idr(invoice.total_amount)}</td><td>{idr(invoice.verified_amount)}</td><td><span className="status">{invoiceStatus[invoice.status] || invoice.status}</span></td><td>{invoice.due_at ? new Date(invoice.due_at).toLocaleDateString("id-ID") : "—"}</td><td>{["draft", "issued", "overdue"].includes(invoice.status) && <button type="button" className="cancel-invoice" onClick={(event) => { event.stopPropagation(); void voidInvoiceById(invoice.id); }} disabled={busy}>Batalkan</button>}</td></tr>)}</tbody></table></div> : <p className="empty">Belum ada invoice platform.</p>}
+        {loading ? <p className="empty">Memuat invoice…</p> : invoices.length ? <div className="table-wrap"><table><thead><tr><th>Invoice</th><th>Tenant</th><th>Jenis</th><th>Total</th><th>Terverifikasi</th><th>Status</th><th>Jatuh tempo</th><th>Aksi</th></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id} onClick={() => invoice.status === "draft" && setSelectedInvoice(invoice.id)} className={selectedInvoice === invoice.id ? "selected" : ""}><td>{invoice.invoice_number}</td><td>{invoice.tenant_name}</td><td>{invoiceLabel[invoice.invoice_type] || invoice.invoice_type}</td><td>{idr(invoice.total_amount)}{Number(invoice.discount_amount || 0) > 0 && <small>Diskon {idr(invoice.discount_amount)}</small>}</td><td>{idr(invoice.verified_amount)}</td><td><span className="status">{invoiceStatus[invoice.status] || invoice.status}</span></td><td>{invoice.due_at ? new Date(invoice.due_at).toLocaleDateString("id-ID") : "—"}</td><td>{["draft", "issued", "overdue"].includes(invoice.status) && <button type="button" className="cancel-invoice" onClick={(event) => { event.stopPropagation(); void voidInvoiceById(invoice.id); }} disabled={busy}>Batalkan</button>}</td></tr>)}</tbody></table></div> : <p className="empty">Belum ada invoice platform.</p>}
       </section>
       <section className="panel"><p className="eyebrow">PAYMENT RECONCILIATION</p><h2>Klaim dan verifikasi pembayaran ({payments.length})</h2>
         {loading ? <p className="empty">Memuat pembayaran…</p> : payments.length ? <div className="table-wrap"><table><thead><tr><th>Waktu</th><th>Tenant / invoice</th><th>Metode / referensi</th><th>Nominal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id}><td>{new Date(payment.received_at).toLocaleString("id-ID")}</td><td>{payment.tenant_name}<small>{payment.invoice_number}</small></td><td>{payment.provider}<small>{payment.provider_reference || "Tanpa referensi"}</small></td><td>{idr(payment.amount)}</td><td><span className="status">{paymentStatus[payment.status] || payment.status}</span></td><td><div className="actions">{payment.status === "pending" && <><button type="button" onClick={() => void paymentAction(payment.id, "verify")} disabled={busy}>Verifikasi</button><button type="button" className="danger" onClick={() => void paymentAction(payment.id, "reject")} disabled={busy}>Tolak</button></>}{payment.status === "verified" && <button type="button" className="danger" onClick={() => void paymentAction(payment.id, "refund")} disabled={busy}>Tandai refund</button>}</div></td></tr>)}</tbody></table></div> : <p className="empty">Belum ada klaim pembayaran.</p>}
