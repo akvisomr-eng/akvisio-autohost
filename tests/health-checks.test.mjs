@@ -107,3 +107,17 @@ test("local HTTP origin is allowed only outside production", () => {
   assert.equal(buildHealthChecks({ ...env, NODE_ENV: "development" }, "ok").core_configuration, "ok");
   assert.equal(buildHealthChecks({ ...env, NODE_ENV: "production" }, "ok").core_configuration, "not_configured");
 });
+
+
+test("database connection alone is not ready when required schema migrations are missing", () => {
+  const env = {
+    SESSION_SECRET: "s".repeat(40), BOOTSTRAP_SECRET: "b".repeat(40),
+    PLATFORM_SESSION_SECRET: "p".repeat(40), PLATFORM_BOOTSTRAP_SECRET: "q".repeat(40),
+    APP_BASE_URL: "https://autohost.example.com", NODE_ENV: "production",
+  };
+  const missing = buildHealthChecks(env, "ok", "not_configured");
+  assert.equal(missing.database, "ok");
+  assert.equal(missing.database_schema, "not_configured");
+  assert.equal(isApplicationReady(missing), false);
+  assert.equal(isApplicationReady(buildHealthChecks(env, "ok", "ok")), true);
+});
