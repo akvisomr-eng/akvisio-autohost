@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Nominal harus lebih dari Rp0 dan tidak melebihi Rp1 triliun." }, { status: 400 });
   }
 
-  const bookingId = body.bookingId?.trim() || null;
+  let bookingId = body.bookingId?.trim() || null;
   const invoiceId = body.invoiceId?.trim() || null;
   const vehicleId = body.vehicleId?.trim() || null;
   if ([bookingId, invoiceId, vehicleId].some((id) => id && !uuidPattern.test(id))) {
@@ -120,9 +120,15 @@ export async function POST(request: NextRequest) {
         if (!found.rows[0]) { await client.query("ROLLBACK"); return NextResponse.json({ error: "Pemesanan tidak ditemukan pada organisasi ini." }, { status: 404 }); }
       }
       if (invoiceId) {
-        const found = await client.query("SELECT id, status FROM invoices WHERE id = $1 AND organization_id = $2 FOR SHARE", [invoiceId, session.organizationId]);
+        const found = await client.query("SELECT id, booking_id, status FROM invoices WHERE id = $1 AND organization_id = $2 FOR SHARE", [invoiceId, session.organizationId]);
         if (!found.rows[0]) { await client.query("ROLLBACK"); return NextResponse.json({ error: "Invoice tidak ditemukan pada organisasi ini." }, { status: 404 }); }
         if (["void", "paid"].includes(found.rows[0].status)) { await client.query("ROLLBACK"); return NextResponse.json({ error: "Invoice sudah lunas atau dibatalkan." }, { status: 409 }); }
+        const invoiceBookingId = found.rows[0].booking_id as string | null;
+        if (bookingId && invoiceBookingId && bookingId !== invoiceBookingId) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Invoice dan pemesanan yang dipilih tidak saling terkait." }, { status: 409 });
+        }
+        if (!bookingId && invoiceBookingId) bookingId = invoiceBookingId;
       }
       const inserted = await client.query(
         `INSERT INTO payments (organization_id, booking_id, invoice_id, provider, provider_reference, amount, payment_type, status)
