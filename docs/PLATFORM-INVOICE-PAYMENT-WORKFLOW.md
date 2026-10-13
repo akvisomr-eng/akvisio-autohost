@@ -5,7 +5,7 @@ This phase adds draft invoice generation and controlled payment reconciliation f
 ## Create and issue an invoice
 - `POST /api/platform/invoices` creates a draft from a tenant subscription snapshot.
 - Activation invoice uses the saved activation fee and is allowed only while activation is due.
-- Subscription invoice uses the saved monthly fee and requires a full calendar month.
+- Monthly subscription invoices use the saved monthly fee and require one full calendar month. Annual subscriptions require a full 12-month period, calculate 12 times the saved monthly fee, and apply a 10% discount shown in `discount_amount`; activation is billed separately and is not discounted.
 - Commission invoice uses pending commission entries in a full calendar month.
 - Idempotency keys and unique indexes prevent duplicate requests and duplicate active period invoices.
 - Drafts are not sent to tenants. Issuing requires an explicit tax amount and future due date. The system does not assume a tax rate.
