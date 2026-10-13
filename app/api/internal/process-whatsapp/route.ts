@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
         await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
         const reason = (error instanceof Error ? error.message : "Kesalahan pemrosesan").slice(0, 500);
         await client.query(
-          "UPDATE webhook_events SET processing_status = 'failed', attempts = attempts + 1, last_error = $2 WHERE id = $1",
+          "UPDATE webhook_events SET processing_status = 'failed', last_error = $2 WHERE id = $1",
           [event.id, reason],
         );
         await client.query(`RELEASE SAVEPOINT ${savepoint}`);
