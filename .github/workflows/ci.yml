@@ -22,6 +22,8 @@ jobs:
         run: npm run typecheck
       - name: WhatsApp outbound policy tests
         run: npm run test:whatsapp-policy
+      - name: Finance validation tests
+        run: npm run test:finance-validation
       - name: Lint
         run: npm run lint
       - name: Build
