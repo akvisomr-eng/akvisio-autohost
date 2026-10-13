@@ -239,7 +239,7 @@ test("SaaS billing schema records commission only from verified eligible receipt
 
 test("approved commercial plan prices and activation fee are seeded", async () => {
   const result = await client.query(
-    "SELECT code, activation_fee::numeric(14,2)::text AS activation_fee, monthly_fee::numeric(14,2)::text AS monthly_fee FROM subscription_plans WHERE code = ANY($1::text[]) ORDER BY monthly_fee",
+    "SELECT code, activation_fee::numeric(14,2)::text AS activation_fee, monthly_fee::numeric(14,2)::text AS monthly_fee FROM subscription_plans WHERE code = ANY($1::text[]) ORDER BY CASE code WHEN 'starter' THEN 1 WHEN 'business' THEN 2 WHEN 'pro' THEN 3 ELSE 4 END",
     [["starter", "business", "pro"]],
   );
   assert.deepEqual(result.rows, [
