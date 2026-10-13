@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   if (!financeRoles.includes(session.role)) return NextResponse.json({ error: "Akses data keuangan hanya untuk bagian keuangan atau manajemen." }, { status: 403 });
   const from = request.nextUrl.searchParams.get("from");
   const to = request.nextUrl.searchParams.get("to");
-  if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+  if ((from && !isCalendarDate(from)) || (to && !isCalendarDate(to))) {
     return NextResponse.json({ error: "Rentang tanggal harus berformat YYYY-MM-DD." }, { status: 400 });
   }
   if (from && to && from > to) return NextResponse.json({ error: "Tanggal awal tidak boleh melewati tanggal akhir." }, { status: 400 });
