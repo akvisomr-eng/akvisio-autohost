@@ -37,3 +37,17 @@ Never expose the access token through a `NEXT_PUBLIC_` variable or commit creden
 ## Relationship to Meta Business Agent
 
 The existing webhook inbox and this guarded manual-reply path provide a controlled messaging foundation. Meta Business Agent / Agent Platform access and API compatibility must be verified separately before choosing it as the AI runtime. Any future agent should call tenant-scoped CRM tools, never write database records directly, and require server-side authorization for booking or finance actions.
+
+## Meta Business Agent decision
+
+Treat Meta Business Agent and Meta Business Agent Platform as separate products:
+
+- The in-app Business Agent is enabled from the WhatsApp Business app's Tools area when the account is eligible.
+- The Agent Platform is intended for deeper integration with existing business systems. Do not assume API access, programmatic tool invocation, or Indonesian-language support until the exact account and developer access have been verified.
+- Meta's WhatsApp Help Center currently says availability is limited to selected businesses/countries and that not all languages are supported. Availability must therefore be checked in the actual Sans Rent Cars business account rather than inferred from the global announcement.
+- Preferred strategy: keep the CRM as the source of truth, use official WhatsApp Cloud API for controlled messaging, and evaluate Agent Platform as an optional adapter after access/contract/API capabilities are confirmed. Do not run two independent bots on the same customer thread without a clear handoff policy.
+
+Official references:
+- Meta announcement: https://about.fb.com/news/2026/06/meta-business-agent/
+- WhatsApp Help Center availability note: https://faq.whatsapp.com/1153795669452207/
+- Official WhatsApp Cloud API collection: https://www.postman.com/meta/whatsapp-business-platform/collection/wlk6lh4/whatsapp-cloud-api
