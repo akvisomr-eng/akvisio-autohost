@@ -12,6 +12,11 @@ function monthRange() {
   const pad = (n: number) => String(n).padStart(2, "0");
   return { start: `${year}-${pad(month + 1)}-01`, end: `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}` };
 }
+function previousMonthRange() {
+  const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth() - 1, 1); const last = new Date(now.getFullYear(), now.getMonth(), 0);
+  const fmt = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return { start: fmt(first), end: fmt(last) };
+}
 function localDateTime(date: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -24,6 +29,7 @@ const paymentStatus: Record<string, string> = { pending: "Menunggu verifikasi", 
 export default function PlatformBillingWorkspace() {
   const router = useRouter();
   const range = monthRange();
+  const closedRange = previousMonthRange();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -31,6 +37,8 @@ export default function PlatformBillingWorkspace() {
   const [invoiceType, setInvoiceType] = useState("activation");
   const [periodStart, setPeriodStart] = useState(range.start);
   const [periodEnd, setPeriodEnd] = useState(range.end);
+  const [settlementStart, setSettlementStart] = useState(closedRange.start);
+  const [settlementEnd, setSettlementEnd] = useState(closedRange.end);
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState("");
   const [taxAmount, setTaxAmount] = useState("0");
@@ -72,6 +80,23 @@ export default function PlatformBillingWorkspace() {
   }, [router]);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function settleCommissions() {
+    if (busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/platform/commissions/settle", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ periodStart: settlementStart, periodEnd: settlementEnd }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Settlement komisi gagal.");
+      const data = result.data || {};
+      setNotice(`Settlement selesai: ${data.entriesCreated || 0} entri, komisi ${idr(data.commissionAmount || 0)}. Entri dapat ditagihkan melalui draft invoice komisi.`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Settlement komisi gagal."); }
+    finally { setBusy(false); }
+  }
 
   async function createInvoice(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -163,6 +188,10 @@ export default function PlatformBillingWorkspace() {
       <header className="billing-header"><div><p className="eyebrow">AKVISIO AUTOHOST · BILLING</p><h1>Invoice dan pembayaran platform</h1><p>Invoice rental tenant tetap terpisah dari tagihan langganan AKVISIO.</p></div><div className="header-actions"><a href="/platform">← Super Admin</a><button type="button" onClick={() => void load()} disabled={loading}>Muat ulang</button></div></header>
       {error && <p className="alert error" role="alert">{error}</p>}
       {notice && <p className="alert success" role="status">{notice}</p>}
+      <section className="panel settlement-panel">
+        <div><p className="eyebrow">MONTHLY COMMISSION</p><h2>Hitung komisi bulan yang sudah selesai</h2><p className="help">Hanya pembayaran rental/biaya tambahan berstatus verified yang dihitung. Deposit dan refund tidak menjadi dasar komisi.</p></div>
+        <div className="settlement-controls"><label>Mulai<input type="date" value={settlementStart} onChange={(event) => setSettlementStart(event.target.value)} /></label><label>Akhir<input type="date" value={settlementEnd} onChange={(event) => setSettlementEnd(event.target.value)} /></label><button className="primary" type="button" onClick={() => void settleCommissions()} disabled={busy}>{busy ? "Menghitung…" : "Jalankan settlement"}</button></div>
+      </section>
       <section className="billing-grid">
         <article className="panel"><p className="eyebrow">DRAFT GENERATOR</p><h2>Buat draft invoice</h2>
           <form className="billing-form" onSubmit={(event) => void createInvoice(event)}>
@@ -203,7 +232,7 @@ export default function PlatformBillingWorkspace() {
         {loading ? <p className="empty">Memuat pembayaran…</p> : payments.length ? <div className="table-wrap"><table><thead><tr><th>Waktu</th><th>Tenant / invoice</th><th>Metode / referensi</th><th>Nominal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id}><td>{new Date(payment.received_at).toLocaleString("id-ID")}</td><td>{payment.tenant_name}<small>{payment.invoice_number}</small></td><td>{payment.provider}<small>{payment.provider_reference || "Tanpa referensi"}</small></td><td>{idr(payment.amount)}</td><td><span className="status">{paymentStatus[payment.status] || payment.status}</span></td><td><div className="actions">{payment.status === "pending" && <><button type="button" onClick={() => void paymentAction(payment.id, "verify")} disabled={busy}>Verifikasi</button><button type="button" className="danger" onClick={() => void paymentAction(payment.id, "reject")} disabled={busy}>Tolak</button></>}{payment.status === "verified" && <button type="button" className="danger" onClick={() => void paymentAction(payment.id, "refund")} disabled={busy}>Tandai refund</button>}</div></td></tr>)}</tbody></table></div> : <p className="empty">Belum ada klaim pembayaran.</p>}
       </section>
       <style jsx>{`
-        .billing-page{min-height:100vh;padding:26px;display:grid;gap:16px;background:#f5f7f5;color:#1b2a20}.billing-header{display:flex;justify-content:space-between;align-items:center;gap:16px}.billing-header h1{font-size:25px;letter-spacing:-.7px;margin:4px 0}.billing-header p:not(.eyebrow){font-size:11px;color:#68766d;margin:0}.eyebrow{font-size:9px;letter-spacing:1.4px;font-weight:800;color:#347b55;margin:0 0 7px}.header-actions{display:flex;align-items:center;gap:8px}.header-actions a,.header-actions button{border:0;border-radius:8px;padding:10px 12px;background:#e6ede7;color:#274b35;font-size:10px;font-weight:700;text-decoration:none;cursor:pointer}.billing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}.panel{background:#fff;border:1px solid #e0e7e1;border-radius:13px;padding:17px;min-width:0}.panel h2{font-size:15px;margin:0 0 15px}.billing-form{display:grid;gap:11px}.billing-form label{display:grid;gap:5px;font-size:10px;font-weight:700}.billing-form input,.billing-form select,.billing-form textarea{width:100%;min-width:0;border:1px solid #d8e2da;border-radius:7px;padding:9px;background:#fff;color:#1b2a20;font:inherit;font-size:11px}.billing-form button,.secondary{border:0;border-radius:8px;padding:10px 12px;font-size:10px;font-weight:700;cursor:pointer}.primary{background:#236a47;color:#fff}.secondary{background:#e6ede7;color:#274b35;margin-top:10px}.billing-form button:disabled,.secondary:disabled{opacity:.5;cursor:wait}.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.help,.warning{font-size:9px;line-height:1.6;color:#6d7a70;margin:12px 0 0}.warning{padding:9px;background:#fff6e5;color:#805c1d;border-radius:8px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{font-size:9px;color:#6d7a70;padding:10px;border-bottom:1px solid #e6ebe6;white-space:nowrap}td{font-size:10px;padding:11px 10px;border-bottom:1px solid #edf0ed;white-space:nowrap}td small{display:block;color:#718076;font-size:9px;margin-top:3px}.selected{background:#eef6f0}.cancel-invoice{border:0;border-radius:6px;padding:6px 8px;background:#fff0ef;color:#a42b25;font-size:9px;font-weight:700;cursor:pointer}.status{display:inline-flex;background:#edf3ee;border-radius:20px;padding:5px 8px;font-size:9px}.actions{display:flex;gap:5px}.actions button{border:0;border-radius:6px;padding:6px 8px;background:#e2f2e7;color:#226344;font-size:9px;font-weight:700;cursor:pointer}.actions .danger{background:#fff0ef;color:#a42b25}.empty{font-size:11px;color:#718076}.alert{font-size:11px;border-radius:8px;padding:11px;margin:0}.error{background:#fff0ef;color:#a42b25}.success{background:#e8f5ec;color:#246847}@media(max-width:1150px){.billing-grid{grid-template-columns:1fr 1fr}.billing-grid article:last-child{grid-column:1/-1}}@media(max-width:750px){.billing-page{padding:13px}.billing-header{align-items:flex-start;flex-direction:column}.billing-grid{grid-template-columns:1fr}.billing-grid article:last-child{grid-column:auto}.two{grid-template-columns:1fr}}
+        .billing-page{min-height:100vh;padding:26px;display:grid;gap:16px;background:#f5f7f5;color:#1b2a20}.billing-header{display:flex;justify-content:space-between;align-items:center;gap:16px}.billing-header h1{font-size:25px;letter-spacing:-.7px;margin:4px 0}.billing-header p:not(.eyebrow){font-size:11px;color:#68766d;margin:0}.eyebrow{font-size:9px;letter-spacing:1.4px;font-weight:800;color:#347b55;margin:0 0 7px}.header-actions{display:flex;align-items:center;gap:8px}.header-actions a,.header-actions button{border:0;border-radius:8px;padding:10px 12px;background:#e6ede7;color:#274b35;font-size:10px;font-weight:700;text-decoration:none;cursor:pointer}.settlement-panel{display:flex;justify-content:space-between;align-items:center;gap:18px}.settlement-panel h2{margin:0 0 4px}.settlement-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap}.settlement-controls label{display:grid;gap:4px;font-size:9px;font-weight:700}.settlement-controls input{border:1px solid #d8e2da;border-radius:7px;padding:8px;font:inherit;font-size:10px}.settlement-controls button{border:0;border-radius:8px;padding:10px 12px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}.billing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}.panel{background:#fff;border:1px solid #e0e7e1;border-radius:13px;padding:17px;min-width:0}.panel h2{font-size:15px;margin:0 0 15px}.billing-form{display:grid;gap:11px}.billing-form label{display:grid;gap:5px;font-size:10px;font-weight:700}.billing-form input,.billing-form select,.billing-form textarea{width:100%;min-width:0;border:1px solid #d8e2da;border-radius:7px;padding:9px;background:#fff;color:#1b2a20;font:inherit;font-size:11px}.billing-form button,.secondary{border:0;border-radius:8px;padding:10px 12px;font-size:10px;font-weight:700;cursor:pointer}.primary{background:#236a47;color:#fff}.secondary{background:#e6ede7;color:#274b35;margin-top:10px}.billing-form button:disabled,.secondary:disabled{opacity:.5;cursor:wait}.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.help,.warning{font-size:9px;line-height:1.6;color:#6d7a70;margin:12px 0 0}.warning{padding:9px;background:#fff6e5;color:#805c1d;border-radius:8px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{font-size:9px;color:#6d7a70;padding:10px;border-bottom:1px solid #e6ebe6;white-space:nowrap}td{font-size:10px;padding:11px 10px;border-bottom:1px solid #edf0ed;white-space:nowrap}td small{display:block;color:#718076;font-size:9px;margin-top:3px}.selected{background:#eef6f0}.cancel-invoice{border:0;border-radius:6px;padding:6px 8px;background:#fff0ef;color:#a42b25;font-size:9px;font-weight:700;cursor:pointer}.status{display:inline-flex;background:#edf3ee;border-radius:20px;padding:5px 8px;font-size:9px}.actions{display:flex;gap:5px}.actions button{border:0;border-radius:6px;padding:6px 8px;background:#e2f2e7;color:#226344;font-size:9px;font-weight:700;cursor:pointer}.actions .danger{background:#fff0ef;color:#a42b25}.empty{font-size:11px;color:#718076}.alert{font-size:11px;border-radius:8px;padding:11px;margin:0}.error{background:#fff0ef;color:#a42b25}.success{background:#e8f5ec;color:#246847}@media(max-width:1150px){.billing-grid{grid-template-columns:1fr 1fr}.billing-grid article:last-child{grid-column:1/-1}}@media(max-width:750px){.billing-page{padding:13px}.billing-header{align-items:flex-start;flex-direction:column}.settlement-panel{align-items:flex-start;flex-direction:column}.settlement-controls{width:100%}.billing-grid{grid-template-columns:1fr}.billing-grid article:last-child{grid-column:auto}.two{grid-template-columns:1fr}}
       `}</style>
     </main>
   );
