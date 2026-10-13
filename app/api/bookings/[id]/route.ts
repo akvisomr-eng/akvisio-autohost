@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       [nextStatus, id, session.organizationId],
     );
     await client.query(
-      "INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'user', $3, 'booking', $4, $5::jsonb)",
+      "INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id, details) VALUES ($1, $2, 'user', $3, 'booking', $4, $5::jsonb)",
       [session.organizationId, session.userId, `booking.status.${nextStatus}`, id, JSON.stringify({ previousStatus: booking.status, nextStatus })],
     );
     await client.query("COMMIT");
