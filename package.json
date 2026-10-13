@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:whatsapp-policy": "node --experimental-strip-types --test tests/whatsapp-outbound-policy.test.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
