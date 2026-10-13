@@ -21,10 +21,10 @@ export function mergeWhatsAppDeliveryStatus(current: string | null | undefined, 
 
 /** Only accept valid provider epoch timestamps that are not older than stored metadata. */
 export function shouldAcceptDeliveryTimestamp(current: string, incoming: string): boolean {
-  if (!/^\\d{9,12}$/.test(incoming)) return false;
+  if (!/^\d{9,12}$/.test(incoming)) return false;
   const incomingSeconds = Number(incoming);
   if (!Number.isSafeInteger(incomingSeconds) || incomingSeconds <= 0) return false;
-  if (!/^\\d{9,12}$/.test(current)) return true;
+  if (!/^\d{9,12}$/.test(current)) return true;
   const currentSeconds = Number(current);
   if (!Number.isSafeInteger(currentSeconds) || currentSeconds <= 0) return true;
   return incomingSeconds >= currentSeconds;
