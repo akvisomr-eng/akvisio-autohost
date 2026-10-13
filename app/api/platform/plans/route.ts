@@ -24,31 +24,10 @@ const planSchema = z.object({
 export async function GET() {
   const session = await getPlatformSession();
   if (!session) return NextResponse.json({ error: "Autentikasi Super Admin diperlukan." }, { status: 401 });
+  const client = await getPool().connect();
   try {
-    const result = await getPool().query(
-      `SELECT id, code, name, description, activation_fee, monthly_fee, commission_rate_bps,
-              commission_cap_amount, max_vehicles, max_users, monthly_conversation_limit,
-              included_ai_tokens, is_active, created_at, updated_at
-       FROM subscription_plans ORDER BY created_at DESC LIMIT 200`,
-    );
-    return NextResponse.json({ data: result.rows });
-  } catch (error) {
-    console.error("Platform plans list failed", error instanceof Error ? error.message : "unknown error");
-    return NextResponse.json({ error: "Paket belum dapat dimuat. Pastikan migrasi platform billing telah diterapkan pada database yang digunakan." }, { status: 503 });
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const session = await getPlatformSession();
-  if (!session) return NextResponse.json({ error: "Autentikasi Super Admin diperlukan." }, { status: 401 });
-  let raw: unknown;
-  try { raw = await request.json(); }
-  catch { return NextResponse.json({ error: "Format permintaan tidak valid." }, { status: 400 }); }
-  const parsed = planSchema.safeParse(raw);
-  if (!parsed.success) return NextResponse.json({ error: "Data paket tidak valid.", details: parsed.error.flatten().fieldErrors }, { status: 400 });
-  const p = parsed.data;
-  try {
-    const result = await getPool().query(
+    await client.query("BEGIN");
+    const result = await client.query(
       `INSERT INTO subscription_plans
        (code, name, description, activation_fee, monthly_fee, commission_rate_bps, commission_cap_amount,
         max_vehicles, max_users, monthly_conversation_limit, included_ai_tokens)
@@ -60,16 +39,18 @@ export async function POST(request: NextRequest) {
         p.commissionCapAmount, p.maxVehicles, p.maxUsers, p.monthlyConversationLimit, p.includedAiTokens],
     );
     const plan = result.rows[0];
-    await getPool().query(
+    await client.query(
       `INSERT INTO platform_audit_logs (platform_admin_id, actor_type, action, entity_type, entity_id, details)
        VALUES ($1, 'platform_admin', 'subscription_plan.created', 'subscription_plan', $2, $3::jsonb)`,
       [session.platformAdminId, plan.id, JSON.stringify({ code: plan.code, name: plan.name })],
     );
+    await client.query("COMMIT");
     return NextResponse.json({ data: plan }, { status: 201 });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
     const code = (error as { code?: string })?.code;
     if (code === "23505") return NextResponse.json({ error: "Kode paket sudah digunakan." }, { status: 409 });
     console.error("Platform plan creation failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: "Paket belum dapat disimpan." }, { status: 503 });
-  }
+  } finally { client.release(); }
 }
