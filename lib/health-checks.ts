@@ -4,12 +4,32 @@ export type HealthComponentStatus = "ok" | "not_configured" | "disabled" | "erro
 
 export type HealthChecks = {
   application: "ok";
+  core_configuration: HealthComponentStatus;
   database: "ok" | "not_configured" | "error";
   whatsapp_webhook: HealthComponentStatus;
   whatsapp_processor: HealthComponentStatus;
   whatsapp_outbound: HealthComponentStatus;
   ai_draft: HealthComponentStatus;
 };
+
+/** Core secrets and the public origin must be valid before the app can be called ready. */
+function coreConfigurationStatus(env: Record<string, string | undefined>): HealthComponentStatus {
+  const strongSecret = (value: string | undefined) => Boolean(value && value.length >= 32);
+  if (!strongSecret(env.SESSION_SECRET) || !strongSecret(env.BOOTSTRAP_SECRET)
+    || !strongSecret(env.PLATFORM_SESSION_SECRET) || !strongSecret(env.PLATFORM_BOOTSTRAP_SECRET)) {
+    return "not_configured";
+  }
+  try {
+    const base = new URL(env.APP_BASE_URL || "");
+    if (base.username || base.password || base.search || base.hash) return "not_configured";
+    const localHttp = env.NODE_ENV !== "production" && base.protocol === "http:"
+      && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname);
+    if (base.protocol !== "https:" && !localHttp) return "not_configured";
+    return "ok";
+  } catch {
+    return "not_configured";
+  }
+}
 
 /** Reports capabilities using the actual server-side environment variable names. */
 export function buildHealthChecks(env: Record<string, string | undefined>, database: HealthChecks["database"]): HealthChecks {
@@ -40,6 +60,7 @@ export function buildHealthChecks(env: Record<string, string | undefined>, datab
 
   return {
     application: "ok",
+    core_configuration: coreConfigurationStatus(env),
     database,
     whatsapp_webhook: whatsappWebhook,
     whatsapp_processor: whatsappProcessor,
@@ -48,7 +69,7 @@ export function buildHealthChecks(env: Record<string, string | undefined>, datab
   };
 }
 
-/** Integrations are optional capabilities; database availability gates core readiness. */
+/** Core readiness requires the database and valid session/bootstrap secrets plus public origin. */
 export function isApplicationReady(checks: HealthChecks): boolean {
-  return checks.database === "ok";
+  return checks.database === "ok" && checks.core_configuration === "ok";
 }
