@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
 
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
   }
   if (notes && notes.length > 2000) return NextResponse.json({ error: "Catatan maksimal 2.000 karakter." }, { status: 400 });
 
-  let client: Awaited<ReturnType<ReturnType<typeof getPool>["connect"]>> | undefined;
+  let client: PoolClient | undefined;
   try {
     client = await getPool().connect();
     await client.query("BEGIN");
