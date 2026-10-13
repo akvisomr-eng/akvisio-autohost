@@ -1,0 +1,45 @@
+name: WhatsApp Event Processor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: whatsapp-event-processor
+  cancel-in-progress: false
+
+jobs:
+  process-events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+      WHATSAPP_PROCESSOR_SECRET: ${{ secrets.WHATSAPP_PROCESSOR_SECRET }}
+    steps:
+      - name: Check configuration
+        id: config
+        shell: bash
+        run: |
+          if [[ -z "$APP_BASE_URL" || -z "$WHATSAPP_PROCESSOR_SECRET" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Skipped: configure APP_BASE_URL and WHATSAPP_PROCESSOR_SECRET in repository Actions secrets."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Process pending WhatsApp events
+        if: steps.config.outputs.configured == 'true'
+        shell: bash
+        run: |
+          case "$APP_BASE_URL" in
+            https://*) ;;
+            *) echo "APP_BASE_URL must use public HTTPS." >&2; exit 1 ;;
+          esac
+          curl --silent --show-error --fail-with-body --max-time 25 \
+            --request POST "${APP_BASE_URL%/}/api/internal/process-whatsapp" \
+            --header "Authorization: Bearer $WHATSAPP_PROCESSOR_SECRET" \
+            --header "Content-Type: application/json" \
+            --data '{"limit":10}'
