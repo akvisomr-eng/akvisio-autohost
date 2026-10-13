@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { toMinorUnits } from "@/lib/finance-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,8 +59,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
            FROM payments WHERE invoice_id = $1 AND organization_id = $2`,
           [payment.invoice_id, session.organizationId],
         );
-        const received = Number(receivedResult.rows[0]?.received || 0);
-        if (received + Number(payment.amount) > Number(invoice.amount)) {
+        const receivedMinor = toMinorUnits(receivedResult.rows[0]?.received ?? "0");
+        const paymentMinor = toMinorUnits(payment.amount);
+        const invoiceMinor = toMinorUnits(invoice.amount);
+        if (receivedMinor === null || paymentMinor === null || invoiceMinor === null) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Data nominal keuangan tidak valid; verifikasi dihentikan." }, { status: 409 });
+        }
+        if (receivedMinor + paymentMinor > invoiceMinor) {
           await client.query("ROLLBACK");
           return NextResponse.json({
             error: "Nominal ini melebihi sisa tagihan invoice. Periksa pembayaran terverifikasi dan jumlah yang diterima sebelum melanjutkan.",
@@ -81,7 +88,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
            FROM payments WHERE invoice_id = $1 AND organization_id = $2`,
           [payment.invoice_id, session.organizationId],
         );
-        if (Number(payment.amount) > Number(result.rows[0]?.net_received || 0)) {
+        const refundMinor = toMinorUnits(payment.amount);
+        const netReceivedMinor = toMinorUnits(result.rows[0]?.net_received ?? "0");
+        if (refundMinor === null || netReceivedMinor === null) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Data nominal refund tidak valid; verifikasi dihentikan." }, { status: 409 });
+        }
+        if (refundMinor > netReceivedMinor) {
           await client.query("ROLLBACK");
           return NextResponse.json({ error: "Pengembalian dana melebihi penerimaan bersih terverifikasi pada invoice." }, { status: 409 });
         }
@@ -97,7 +110,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
            FROM payments WHERE booking_id = $1 AND organization_id = $2`,
           [payment.booking_id, session.organizationId],
         );
-        if (Number(payment.amount) > Number(result.rows[0]?.net_received || 0)) {
+        const refundMinor = toMinorUnits(payment.amount);
+        const netReceivedMinor = toMinorUnits(result.rows[0]?.net_received ?? "0");
+        if (refundMinor === null || netReceivedMinor === null) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Data nominal refund tidak valid; verifikasi dihentikan." }, { status: 409 });
+        }
+        if (refundMinor > netReceivedMinor) {
           await client.query("ROLLBACK");
           return NextResponse.json({ error: "Pengembalian dana melebihi penerimaan bersih terverifikasi pada pemesanan." }, { status: 409 });
         }
@@ -126,9 +145,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       );
       const invoice = totals.rows[0];
       if (invoice) {
-        const received = Number(invoice.received);
-        const amount = Number(invoice.amount);
-        const status = received >= amount ? "paid" : received > 0 ? "partially_paid" : "issued";
+        const receivedMinor = toMinorUnits(invoice.received);
+        const amountMinor = toMinorUnits(invoice.amount);
+        if (receivedMinor === null || amountMinor === null) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Total invoice tidak valid; pembaruan status dibatalkan." }, { status: 409 });
+        }
+        const status = receivedMinor >= amountMinor ? "paid" : receivedMinor > 0 ? "partially_paid" : "issued";
         await client.query(
           "UPDATE invoices SET status = $1, issued_at = COALESCE(issued_at, now()) WHERE id = $2 AND organization_id = $3 AND status <> 'void'",
           [status, payment.invoice_id, session.organizationId],
@@ -149,9 +172,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       );
       const booking = totals.rows[0];
       if (booking) {
-        const received = Number(booking.received);
-        const total = Number(booking.estimated_total);
-        const status = received >= total ? "paid" : received > 0 ? "partial" : "unpaid";
+        const receivedMinor = toMinorUnits(booking.received);
+        const totalMinor = toMinorUnits(booking.estimated_total);
+        if (receivedMinor === null || totalMinor === null) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: "Total pemesanan tidak valid; pembaruan status dibatalkan." }, { status: 409 });
+        }
+        const status = receivedMinor >= totalMinor ? "paid" : receivedMinor > 0 ? "partial" : "unpaid";
         await client.query(
           "UPDATE bookings SET payment_status = $1, updated_at = now() WHERE id = $2 AND organization_id = $3",
           [status, payment.booking_id, session.organizationId],
