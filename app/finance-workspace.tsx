@@ -6,7 +6,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type Booking = { id: string; booking_code: string; customer_name: string | null; registration_number: string; make: string; model: string; status: string };
 type Vehicle = { id: string; registration_number: string; make: string; model: string };
-type Payment = { id: string; booking_id: string | null; amount: string | number; payment_type: string; status: string; provider: string; provider_reference: string | null; created_at: string; booking_code: string | null; customer_name: string | null };
+type Payment = { id: string; booking_id: string | null; invoice_id: string | null; amount: string | number; payment_type: string; status: string; provider: string; provider_reference: string | null; created_at: string; booking_code: string | null; customer_name: string | null };
+type InvoiceOption = { id: string; invoice_number: string; amount: string | number; status: string; booking_code: string | null; customer_name: string | null };
 type Expense = { id: string; vehicle_id: string | null; booking_id: string | null; category: string; description: string; amount: string | number; spent_at: string; registration_number: string | null; booking_code: string | null };
 type FinanceData = { summary: { net_received: string | number; pending_payments: string | number; verified_count: number; expenses_total: string | number }; payments: Payment[]; expenses: Expense[] };
 
@@ -18,6 +19,7 @@ const statusLabel: Record<string, string> = { pending: "Menunggu verifikasi", ve
 export default function FinanceWorkspace() {
   const [data, setData] = useState<FinanceData | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -25,6 +27,7 @@ export default function FinanceWorkspace() {
   const [message, setMessage] = useState("");
   const [kind, setKind] = useState("payment");
   const [bookingId, setBookingId] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
   const [paymentType, setPaymentType] = useState("rental");
   const [provider, setProvider] = useState("manual");
   const [providerReference, setProviderReference] = useState("");
@@ -38,20 +41,24 @@ export default function FinanceWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const [financeRes, bookingsRes, vehiclesRes] = await Promise.all([
+      const [financeRes, bookingsRes, vehiclesRes, invoicesRes] = await Promise.all([
         fetch("/api/finance", { cache: "no-store" }),
         fetch("/api/bookings", { cache: "no-store" }),
         fetch("/api/vehicles", { cache: "no-store" }),
+        fetch("/api/finance/invoices", { cache: "no-store" }),
       ]);
       const financeJson = await financeRes.json();
       const bookingsJson = await bookingsRes.json();
       const vehiclesJson = await vehiclesRes.json();
+      const invoicesJson = await invoicesRes.json();
       if (!financeRes.ok) throw new Error(financeJson.error || "Data keuangan gagal dimuat.");
       if (!bookingsRes.ok) throw new Error(bookingsJson.error || "Data pemesanan gagal dimuat.");
       if (!vehiclesRes.ok) throw new Error(vehiclesJson.error || "Data armada gagal dimuat.");
+      if (!invoicesRes.ok) throw new Error(invoicesJson.error || "Daftar invoice gagal dimuat.");
       setData(financeJson);
       setBookings(bookingsJson.data || []);
       setVehicles(vehiclesJson.data || []);
+      setInvoices((invoicesJson.data || []).filter((invoice: InvoiceOption) => !["void", "paid"].includes(invoice.status)));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Terjadi kesalahan saat memuat keuangan.");
     } finally {
@@ -66,13 +73,14 @@ export default function FinanceWorkspace() {
     setBusy(true); setError(""); setMessage("");
     try {
       const payload = kind === "payment"
-        ? { kind, bookingId, paymentType, provider, providerReference, amount }
+        ? { kind, bookingId: bookingId || undefined, invoiceId: invoiceId || undefined, paymentType, provider, providerReference, amount }
         : { kind, amount, category, description, vehicleId: vehicleId || undefined, spentAt };
       const response = await fetch("/api/finance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Transaksi gagal disimpan.");
       setMessage(result.message || "Transaksi berhasil dicatat.");
       setAmount(""); setProviderReference(""); setDescription("");
+      setInvoiceId(""); setBookingId("");
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Transaksi gagal disimpan.");
@@ -114,8 +122,10 @@ export default function FinanceWorkspace() {
           <form className="data-form" onSubmit={submitEntry}>
             <label>Jenis transaksi<select value={kind} onChange={(e) => setKind(e.target.value)}><option value="payment">Pembayaran pelanggan</option><option value="expense">Pengeluaran usaha</option></select></label>
             {kind === "payment" ? <>
-              <label>Pemesanan terkait<select value={bookingId} onChange={(e) => setBookingId(e.target.value)} required><option value="">Pilih pemesanan</option>{bookings.map((b) => <option key={b.id} value={b.id}>{b.booking_code} · {b.customer_name || "Pelanggan"} · {b.registration_number}</option>)}</select></label>
+              <label>Invoice terkait (opsional)<select value={invoiceId} onChange={(e) => { setInvoiceId(e.target.value); if (e.target.value) setBookingId(""); }}><option value="">Tidak ditautkan ke invoice</option>{invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoice_number} · {invoice.customer_name || invoice.booking_code || "Pelanggan"} · {money(invoice.amount)} · {invoice.status === "partially_paid" ? "Sebagian dibayar" : "Belum lunas"}</option>)}</select></label>
+              <label>Pemesanan terkait {invoiceId ? "(diisi otomatis dari invoice)" : "(pilih pemesanan atau invoice)"}<select value={bookingId} onChange={(e) => setBookingId(e.target.value)} required={!invoiceId}><option value="">Pilih pemesanan</option>{bookings.map((b) => <option key={b.id} value={b.id}>{b.booking_code} · {b.customer_name || "Pelanggan"} · {b.registration_number}</option>)}</select></label>
               <label>Jenis pembayaran<select value={paymentType} onChange={(e) => setPaymentType(e.target.value)}><option value="rental">Pembayaran sewa</option><option value="deposit">Deposit</option><option value="extra_charge">Biaya tambahan</option><option value="refund">Pengembalian dana (khusus keuangan)</option></select></label>
+              {invoiceId && <small className="privacy-note">Pembayaran akan ditautkan ke invoice. Status tagihan baru berubah setelah transaksi diverifikasi.</small>}
               <label>Metode / provider<input value={provider} onChange={(e) => setProvider(e.target.value)} required maxLength={80} placeholder="manual, transfer bank..." /></label>
               <label>Referensi transaksi (opsional)<input value={providerReference} onChange={(e) => setProviderReference(e.target.value)} maxLength={180} placeholder="Nomor referensi bank" /></label>
             </> : <>
