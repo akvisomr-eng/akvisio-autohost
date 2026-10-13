@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { getPool } from "@/lib/db";
+import { mergeWhatsAppDeliveryStatus, shouldAcceptDeliveryTimestamp } from "@/lib/whatsapp-delivery-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,9 +95,30 @@ async function processPayload(client: PoolClient, payload: MetaPayload) {
         const statusMap: Record<string, string> = { sent: "sent", delivered: "delivered", read: "read", failed: "failed" };
         const deliveryStatus = statusMap[status.status];
         if (!deliveryStatus) continue;
+        // Lock the message row and merge provider statuses monotonically. Meta may
+        // retry or deliver status callbacks out of order (e.g. "sent" after "read").
+        const messageResult = await client.query<{ delivery_status: string; metadata: Record<string, unknown> }>(
+          `SELECT delivery_status, metadata FROM messages
+           WHERE organization_id = $1 AND provider_message_id = $2
+           LIMIT 1 FOR UPDATE`,
+          [organizationId, status.id],
+        );
+        const currentMessage = messageResult.rows[0];
+        if (!currentMessage) continue;
+        const nextStatus = mergeWhatsAppDeliveryStatus(currentMessage.delivery_status, deliveryStatus as "sent" | "delivered" | "read" | "failed");
+        const acceptTimestamp = shouldAcceptDeliveryTimestamp(
+          String(currentMessage.metadata?.latest_status_timestamp ?? ""),
+          status.timestamp || "",
+        );
+        const metadataPatch = acceptTimestamp
+          ? JSON.stringify({ latest_status_timestamp: status.timestamp, provider_errors: status.errors || [] })
+          : "{}";
         await client.query(
-          "UPDATE messages SET delivery_status = $1, metadata = metadata || $2::jsonb WHERE organization_id = $3 AND provider_message_id = $4",
-          [deliveryStatus, JSON.stringify({ latest_status_timestamp: status.timestamp || null, provider_errors: status.errors || [] }), organizationId, status.id],
+          `UPDATE messages
+           SET delivery_status = $1,
+               metadata = CASE WHEN $2::boolean THEN metadata || $3::jsonb ELSE metadata END
+           WHERE organization_id = $4 AND provider_message_id = $5`,
+          [nextStatus, acceptTimestamp, metadataPatch, organizationId, status.id],
         );
         handledStatuses++;
       }
