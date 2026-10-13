@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { buildAiHostMessages, parseAiHostResponse } from "@/lib/ai-host";
+import { buildAiHostMessages, estimateAiHostCost, readAiHostProviderResponse } from "@/lib/ai-host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,16 +95,17 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       cache: "no-store",
     });
     if (!response.ok) throw new Error(`AI_PROVIDER_HTTP_${response.status}`);
-    const parsed = parseAiHostResponse(await response.json());
+    const parsed = await readAiHostProviderResponse(response);
+    const estimatedCostUsd = estimateAiHostCost(parsed.inputTokens, parsed.outputTokens, process.env.AI_HOST_INPUT_USD_PER_1K_TOKENS, process.env.AI_HOST_OUTPUT_USD_PER_1K_TOKENS);
     await pool.query(
-      `UPDATE ai_runs SET status = 'completed', input_tokens = $2, output_tokens = $3
-       WHERE id = $1 AND organization_id = $4`,
-      [runId, parsed.inputTokens ?? null, parsed.outputTokens ?? null, session.organizationId],
+      `UPDATE ai_runs SET status = 'completed', input_tokens = $2, output_tokens = $3, estimated_cost = $4
+       WHERE id = $1 AND organization_id = $5`,
+      [runId, parsed.inputTokens ?? null, parsed.outputTokens ?? null, estimatedCostUsd ?? null, session.organizationId],
     );
     await pool.query(
       `INSERT INTO audit_logs (organization_id, actor_user_id, actor_type, action, entity_type, entity_id, details)
        VALUES ($1, $2, 'user', 'ai_host.draft.created', 'conversation', $3, $4::jsonb)`,
-      [session.organizationId, session.userId, id, JSON.stringify({ aiRunId: runId, provider: "openai-compatible", model })],
+      [session.organizationId, session.userId, id, JSON.stringify({ aiRunId: runId, provider: "openai-compatible", model, estimatedCostUsd: estimatedCostUsd ?? null })],
     );
     return NextResponse.json({ draft: parsed.content, aiRunId: runId, sent: false });
   } catch (error) {
