@@ -5,6 +5,7 @@ export type ConversationEntry = { direction: string; sender_type: string; body: 
 
 const MAX_KNOWLEDGE_CHARS = 12_000;
 const MAX_MESSAGE_CHARS = 2_000;
+export const MAX_AI_PROVIDER_RESPONSE_BYTES = 128 * 1024;
 
 function bounded(value: string, max: number) {
   return value.trim().slice(0, max);
@@ -73,4 +74,40 @@ export function parseAiHostResponse(payload: unknown): { content: string; inputT
     inputTokens: integerOrUndefined(root.usage?.prompt_tokens),
     outputTokens: integerOrUndefined(root.usage?.completion_tokens),
   };
+}
+
+
+/** Read provider JSON with a strict byte ceiling. */
+export async function readAiHostProviderResponse(response: Response): Promise<{ content: string; inputTokens?: number; outputTokens?: number }> {
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > MAX_AI_PROVIDER_RESPONSE_BYTES) throw new Error("AI_PROVIDER_RESPONSE_TOO_LARGE");
+  if (!response.body) throw new Error("AI_PROVIDER_EMPTY_BODY");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      total += part.value.byteLength;
+      if (total > MAX_AI_PROVIDER_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("AI_PROVIDER_RESPONSE_TOO_LARGE");
+      }
+      chunks.push(part.value);
+    }
+  } finally { reader.releaseLock(); }
+  let payload: unknown;
+  try { payload = JSON.parse(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8")); }
+  catch { throw new Error("AI_PROVIDER_INVALID_JSON"); }
+  return parseAiHostResponse(payload);
+}
+
+/** Estimated USD cost; returns undefined unless usage and explicit valid rates exist. */
+export function estimateAiHostCost(inputTokens: number | undefined, outputTokens: number | undefined, inputUsdPer1k: string | undefined, outputUsdPer1k: string | undefined): number | undefined {
+  if (inputTokens === undefined || outputTokens === undefined || !inputUsdPer1k?.trim() || !outputUsdPer1k?.trim()) return undefined;
+  const inputRate = Number(inputUsdPer1k); const outputRate = Number(outputUsdPer1k);
+  if (!Number.isFinite(inputRate) || inputRate < 0 || !Number.isFinite(outputRate) || outputRate < 0) return undefined;
+  const value = (inputTokens * inputRate + outputTokens * outputRate) / 1000;
+  return Math.round((value + Number.EPSILON) * 1000000) / 1000000;
 }
