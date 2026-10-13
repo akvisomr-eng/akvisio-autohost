@@ -144,7 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_commission_entries_org_status_date
 
 
 CREATE OR REPLACE FUNCTION validate_commission_source_payment() RETURNS trigger
-LANGUAGE plpgsql AS $
+LANGUAGE plpgsql AS $$
 DECLARE
   source_payment payments%ROWTYPE;
 BEGIN
@@ -167,7 +167,7 @@ BEGIN
     RAISE EXCEPTION 'Commission booking does not match source payment' USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
-END $;
+END $$;
 
 DROP TRIGGER IF EXISTS trg_validate_commission_source_payment ON commission_entries;
 CREATE TRIGGER trg_validate_commission_source_payment
