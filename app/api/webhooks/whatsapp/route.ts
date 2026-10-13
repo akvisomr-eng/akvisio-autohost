@@ -7,6 +7,24 @@ export const dynamic = "force-dynamic";
 
 const MAX_BODY_BYTES = 1_000_000;
 
+async function readLimitedBody(request: NextRequest): Promise<string> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const part = await reader.read();
+    if (part.done) break;
+    total += part.value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("WEBHOOK_BODY_TOO_LARGE");
+    }
+    chunks.push(part.value);
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+}
+
 function safeEqual(left: string, right: string) {
   const a = Buffer.from(left);
   const b = Buffer.from(right);
@@ -39,9 +57,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payload webhook terlalu besar." }, { status: 413 });
   }
 
-  const rawBody = await request.text();
-  if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
-    return NextResponse.json({ error: "Payload webhook terlalu besar." }, { status: 413 });
+  let rawBody: string;
+  try {
+    rawBody = await readLimitedBody(request);
+  } catch {
+    return NextResponse.json({ error: "Payload webhook terlalu besar atau tidak dapat dibaca." }, { status: 413 });
   }
   const suppliedSignature = request.headers.get("x-hub-signature-256") || "";
   const expectedSignature = `sha256=${createHmac("sha256", appSecret).update(rawBody, "utf8").digest("hex")}`;
